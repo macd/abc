@@ -29,6 +29,12 @@ src/aig/ddb/
 
 *.zip
 
+*.so
+ABC.py
+ABC_wrap.c
+src/ABC-python/__pycache__
+*.egg.info
+
 abcspaceext.dsw
 abcext.dsp
 
