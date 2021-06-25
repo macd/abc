@@ -60,13 +60,45 @@ the basic ABC transforms.
     '\x1b[1;37mcla                           :\x1b[0m i/o =  128/   65  lat =    0  nd =   836  edge =   1214  cube =   896  lev = 128\n')
 
 
-Of course, we are still left with the job of parsing the raw output of ABC. There
-is some code in another repo that parses the output of stime and returns a tuple
-of (# of gates, area, delay) but that is not included here.
+Of course, we are still left with the job of parsing the raw output of ABC. Here is
+a (brittle) example of parsing the output of the `stime` command:
+
+    def parse_timing(timing):
+        st, res = timing
+        if st != 0:
+            print("Error parsing timing: bad ABC result")
+            return
+
+        # first find the correct line to parse
+        line = ""
+        for line in res.splitlines():
+            if "Gates" in line and "Area" in line and "Delay" in line:
+                break
+            
+        toks = list(filter(lambda x: x != "", re.split("[ m=\x1b]", line)))
+        g = toks.index("Gates")
+        a = toks.index("Area")
+        d = toks.index("Delay")
+    
+        gates = 0
+        area = delay = 0.0
+    
+        try:
+            gates = int(toks[g+1].split('\e')[0])
+            area  = float(toks[a+1].split('\e')[0])
+            delay = float(toks[d+1].split('\e')[0])
+        except:
+            print("Parsing area and delay failed on the following line:")
+            print(res[1])
+            print(toks)
+
+        return (gates, area, delay)
+
+
 
 ### Dependencies
-  swig
-  locate
-  gcc
-  g++
-  pip
+  * swig
+  * locate
+  * gcc
+  * g++
+  * pip
