@@ -32,8 +32,8 @@ src/aig/ddb/
 *.so
 ABC.py
 ABC_wrap.c
-src/ABC-python/__pycache__
-*.egg.info
+/ABC-python/__pycache__
+*.egg-info
 
 abcspaceext.dsw
 abcext.dsp
