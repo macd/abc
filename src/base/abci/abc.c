@@ -32700,18 +32700,22 @@ int Abc_CommandAbc9Dfs( Abc_Frame_t * pAbc, int argc, char ** argv )
     Gia_Man_t * pTemp;
     int c;
     int fNormal  = 0;
-    int fReverse = 0;
+    int fRevFans = 0;
+    int fRevOuts = 0;
     int fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "nrvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "nfovh" ) ) != EOF )
     {
         switch ( c )
         {
         case 'n':
             fNormal ^= 1;
             break;
-        case 'r':
-            fReverse ^= 1;
+        case 'f':
+            fRevFans ^= 1;
+            break;
+        case 'o':
+            fRevOuts ^= 1;
             break;
         case 'v':
             fVerbose ^= 1;
@@ -32728,31 +32732,18 @@ int Abc_CommandAbc9Dfs( Abc_Frame_t * pAbc, int argc, char ** argv )
         return 1;
     }
     if ( fNormal )
-    {
         pTemp = Gia_ManDupOrderAiger( pAbc->pGia );
-        if ( fVerbose )
-            Abc_Print( -1, "AIG objects are reordered as follows: CIs, ANDs, COs.\n" );
-    }
-    else if ( fReverse )
-    {
-        pTemp = Gia_ManDupOrderDfsReverse( pAbc->pGia );
-        if ( fVerbose )
-            Abc_Print( -1, "AIG objects are reordered in the reserve DFS order.\n" );
-    }
-    else
-    {
-        pTemp = Gia_ManDupOrderDfs( pAbc->pGia );
-        if ( fVerbose )
-            Abc_Print( -1, "AIG objects are reordered in the DFS order.\n" );
-    }
+    else 
+        pTemp = Gia_ManDupOrderDfsReverse( pAbc->pGia, fRevFans, fRevOuts );
     Abc_FrameUpdateGia( pAbc, pTemp );
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &dfs [-nrvh]\n" );
+    Abc_Print( -2, "usage: &dfs [-nfovh]\n" );
     Abc_Print( -2, "\t        orders objects in the DFS order\n" );
     Abc_Print( -2, "\t-n    : toggle using normalized ordering [default = %s]\n", fNormal? "yes": "no" );
-    Abc_Print( -2, "\t-r    : toggle using reverse DFS ordering [default = %s]\n", fReverse? "yes": "no" );
+    Abc_Print( -2, "\t-f    : toggle using reverse fanin traversal order [default = %s]\n", fRevFans? "yes": "no" );
+    Abc_Print( -2, "\t-o    : toggle using reverse output traversal order [default = %s]\n", fRevOuts? "yes": "no" );
     Abc_Print( -2, "\t-v    : toggle printing verbose information [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h    : print the command usage\n");
     return 1;
@@ -37762,6 +37753,20 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
             Gia_Obj_t * pObj; int i;
             if ( !pPars->fSilent )
             Abc_Print( 1, "Assuming the current network is a single-output miter.\n" );
+            if ( fUseSim )
+            {
+                abctime clk = Abc_Clock();
+                extern int Gia_ManCheckSimEquiv( Gia_Man_t * p, int fVerbose );
+                int Status = Gia_ManCheckSimEquiv( pAbc->pGia, pPars->fVerbose );
+                if ( Status == 1 )
+                    Abc_Print( 1, "Networks are equivalent.  " );
+                else if ( Status == 0 )
+                    Abc_Print( 1, "Networks are NOT equivalent.  " );
+                else
+                    Abc_Print( 1, "Networks are UNDECIDED.  " );
+                Abc_PrintTime( 1, "Time", Abc_Clock() - clk );
+                return 0;
+            }
             // handle the case when the output is disproved by an all-0 primary input pattern
             ABC_FREE( pAbc->pGia->pCexComb );
             Gia_ManSetPhase( pAbc->pGia );
