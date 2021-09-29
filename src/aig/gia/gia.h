@@ -482,6 +482,8 @@ static inline void         Gia_ObjSetValue( Gia_Obj_t * pObj, int i )          {
 static inline int          Gia_ObjPhase( Gia_Obj_t * pObj )                    { return pObj->fPhase;                                        }
 static inline int          Gia_ObjPhaseReal( Gia_Obj_t * pObj )                { return Gia_Regular(pObj)->fPhase ^ Gia_IsComplement(pObj);  }
 static inline int          Gia_ObjPhaseDiff( Gia_Man_t * p, int i, int k )     { return Gia_ManObj(p, i)->fPhase ^ Gia_ManObj(p, k)->fPhase; }
+static inline char *       Gia_ObjCiName( Gia_Man_t * p, int i )               { return p->vNamesIn   ? (char*)Vec_PtrEntry(p->vNamesIn, i)   : NULL; }
+static inline char *       Gia_ObjCoName( Gia_Man_t * p, int i )               { return p->vNamesOut  ? (char*)Vec_PtrEntry(p->vNamesOut, i)  : NULL; }
 static inline char *       Gia_ObjName( Gia_Man_t * p, int i )                 { return p->vNamesNode ? (char*)Vec_PtrEntry(p->vNamesNode, i) : NULL; }
 static inline char *       Gia_ObjNameObj( Gia_Man_t * p, Gia_Obj_t * pObj )   { return p->vNamesNode ? (char*)Vec_PtrEntry(p->vNamesNode, Gia_ObjId(p, pObj)) : NULL; }
 
@@ -1161,7 +1163,13 @@ static inline int         Gia_ObjCellId( Gia_Man_t * p, int iLit )          { re
     for ( i = 1; (i < p->nObjs) && ((pObj) = Gia_ManObj(p, i)); i++ )
 #define Gia_ManForEachObjVec( vVec, p, pObj, i )                        \
     for ( i = 0; (i < Vec_IntSize(vVec)) && ((pObj) = Gia_ManObj(p, Vec_IntEntry(vVec,i))); i++ )
-#define Gia_ManForEachObjVecReverse( vVec, p, pObj, i )                        \
+#define Gia_ManForEachObjVecStart( vVec, p, pObj, i, Start )            \
+    for ( i = Start; (i < Vec_IntSize(vVec)) && ((pObj) = Gia_ManObj(p, Vec_IntEntry(vVec,i))); i++ )
+#define Gia_ManForEachObjVecStop( vVec, p, pObj, i, Stop )              \
+    for ( i = 0; (i < Stop) && ((pObj) = Gia_ManObj(p, Vec_IntEntry(vVec,i))); i++ )
+#define Gia_ManForEachObjVecStartStop( vVec, p, pObj, i, Start, Stop )  \
+    for ( i = Start; (i < Stop) && ((pObj) = Gia_ManObj(p, Vec_IntEntry(vVec,i))); i++ )
+#define Gia_ManForEachObjVecReverse( vVec, p, pObj, i )                 \
     for ( i = Vec_IntSize(vVec) - 1; (i >= 0) && ((pObj) = Gia_ManObj(p, Vec_IntEntry(vVec,i))); i-- )
 #define Gia_ManForEachObjVecLit( vVec, p, pObj, fCompl, i )             \
     for ( i = 0; (i < Vec_IntSize(vVec)) && ((pObj) = Gia_ManObj(p, Abc_Lit2Var(Vec_IntEntry(vVec,i)))) && (((fCompl) = Abc_LitIsCompl(Vec_IntEntry(vVec,i))),1); i++ )
@@ -1519,7 +1527,7 @@ extern void                Mf_ManSetDefaultPars( Jf_Par_t * pPars );
 extern Gia_Man_t *         Mf_ManPerformMapping( Gia_Man_t * pGia, Jf_Par_t * pPars );
 extern void *              Mf_ManGenerateCnf( Gia_Man_t * pGia, int nLutSize, int fCnfObjIds, int fAddOrCla, int fMapping, int fVerbose );
 /*=== giaMini.c ===========================================================*/
-extern Gia_Man_t *         Gia_ManReadMiniAig( char * pFileName );
+extern Gia_Man_t *         Gia_ManReadMiniAig( char * pFileName, int fGiaSimple );
 extern void                Gia_ManWriteMiniAig( Gia_Man_t * pGia, char * pFileName );
 extern Gia_Man_t *         Gia_ManReadMiniLut( char * pFileName );
 extern void                Gia_ManWriteMiniLut( Gia_Man_t * pGia, char * pFileName );
