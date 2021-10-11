@@ -4903,6 +4903,10 @@ SOURCE=.\src\aig\gia\giaCSat2.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\src\aig\gia\giaCSat3.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\src\aig\gia\giaCSatOld.c
 # End Source File
 # Begin Source File
@@ -4912,6 +4916,10 @@ SOURCE=.\src\aig\gia\giaCTas.c
 # Begin Source File
 
 SOURCE=.\src\aig\gia\giaCut.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\aig\gia\giaDecs.c
 # End Source File
 # Begin Source File
 
@@ -5087,6 +5095,10 @@ SOURCE=.\src\aig\gia\giaPat.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\src\aig\gia\giaPat2.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\src\aig\gia\giaPf.c
 # End Source File
 # Begin Source File
@@ -5199,6 +5211,10 @@ SOURCE=.\src\aig\gia\giaStg.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\src\aig\gia\giaStoch.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\src\aig\gia\giaStr.c
 # End Source File
 # Begin Source File
@@ -5208,6 +5224,10 @@ SOURCE=.\src\aig\gia\giaSupMin.c
 # Begin Source File
 
 SOURCE=.\src\aig\gia\giaSupp.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\aig\gia\giaSupps.c
 # End Source File
 # Begin Source File
 
