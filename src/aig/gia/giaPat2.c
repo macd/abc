@@ -346,7 +346,7 @@ void Min_LitMinimize( Min_Man_t * p, int iLit, Vec_Int_t * vLits )
                         Min_ObjMarkValL( p, Abc_Lit2Var(iLit1) );
                     else if ( Val0 == 4 && Val1 != 4 )
                         Min_ObjMarkValL( p, Abc_Lit2Var(iLit0) );
-                    else if ( Val1 == 4 && Val1 != 4 )
+                    else if ( Val1 == 4 && Val0 != 4 )
                         Min_ObjMarkValL( p, Abc_Lit2Var(iLit1) );
                     else if ( Abc_Random(0) & 1 )
                         Min_ObjMarkValL( p, Abc_Lit2Var(iLit0) );
@@ -1025,9 +1025,9 @@ Vec_Wec_t * Min_ManComputeCexes( Gia_Man_t * p, Vec_Int_t * vOuts0, int nMaxTrie
     if ( fVerbose )
         printf( "Used simulation for %d and SAT for %d outputs (out of %d).\n", nSimOuts, nSatOuts, nOuts );
     if ( fVerbose )
-        Abc_PrintTime( 1, "Simulation time ", clkSim );
+        Abc_PrintTime( 1, "Simulation time  ", clkSim );
     if ( fVerbose )
-        Abc_PrintTime( 1, "SAT solving time", clkSat );
+        Abc_PrintTime( 1, "SAT solving time ", clkSat );
     //Vec_WecPrint( vCexes, 0 );
     if ( vOuts != vOuts0 )
         Vec_IntFreeP( &vOuts );
