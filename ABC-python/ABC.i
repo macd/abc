@@ -31,7 +31,9 @@ import tempfile
 def abc_start():
     Abc_Start()
     pAbc = Abc_FrameGetGlobalFrame()
-    Cmd_CommandExecute(pAbc, "source abc.rc")
+    # a hack for sure
+    pname = os.path.dirname(__file__)
+    Cmd_CommandExecute(pAbc, f"source {pname}/../abc.rc")
     def abc_cmd(scmd):
         old_fno = os.dup(sys.stdout.fileno())
         fd = tempfile.TemporaryFile()
