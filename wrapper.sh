@@ -4,7 +4,7 @@
 # that yet)
 # Finally, you must have write access to site-packages to do the pip install -e ...
 make clean
-make ABC_USE_PIC=1 ABC_USE_NO_READLINE=1 libabc.so -j8
+make OPTFLAGS=-O ABC_USE_PIC=1 ABC_USE_NO_READLINE=1 libabc.so -j8
 cd ABC-python
 swig -python ABC.i
 hdrs=(`locate Python.h`)
@@ -19,4 +19,4 @@ pip install -e ABC-python
 
 # now make the executable abc with readline enabled.
 make clean
-make -j8
+make OPTFLAGS=-O -j8
