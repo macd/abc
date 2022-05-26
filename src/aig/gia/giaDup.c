@@ -5221,6 +5221,171 @@ Gia_Man_t * Gia_ManDupAddPis( Gia_Man_t * p, int nMulti )
     return pNew;
 }
 
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+Vec_Int_t * Gia_ManDupUifBoxTypes( Vec_Int_t * vBarBufs )
+{
+    Vec_Int_t * vTypes = Vec_IntAlloc( 10 );
+    int i, Entry;
+    Vec_IntForEachEntry( vBarBufs, Entry, i )
+        if ( Vec_IntFind(vTypes, Entry & 0xFFFE) < 0 )
+            Vec_IntPush( vTypes, Entry & 0xFFFE );
+    return vTypes;
+}
+Vec_Wec_t ** Gia_ManDupUifBuildMap( Gia_Man_t * p )
+{
+    Vec_Int_t * vTypes = Gia_ManDupUifBoxTypes( p->vBarBufs );
+    Vec_Wec_t ** pvMap = ABC_ALLOC( Vec_Wec_t *, 2*Vec_IntSize(vTypes) ); 
+    Vec_Int_t * vBufs = Vec_IntAlloc( p->nBufs ); 
+    Gia_Obj_t * pObj; int i, Item, j, k = 0;
+    Gia_ManForEachObj1( p, pObj, i )
+        if ( Gia_ObjIsBuf(pObj) )
+            Vec_IntPush( vBufs, i );
+    assert( p->nBufs == Vec_IntSize(vBufs) );
+    for ( i = 0; i < 2*Vec_IntSize(vTypes); i++ )
+        pvMap[i] = Vec_WecAlloc( 10 );
+    Vec_IntForEachEntry( p->vBarBufs, Item, i )
+    {
+        int Type = Vec_IntFind( vTypes, Item & 0xFFFE );
+        Vec_Int_t * vVec = Vec_WecPushLevel(pvMap[2*Type + (Item&1)]);
+        for ( j = 0; j < (Item >> 16); j++ )
+            Vec_IntPush( vVec, Vec_IntEntry(vBufs, k++) );
+    }
+    assert( p->nBufs == k );
+    for ( i = 0; i < Vec_IntSize(vTypes); i++ )
+        assert( Vec_WecSize(pvMap[2*i+0]) == Vec_WecSize(pvMap[2*i+1]) );
+    Vec_IntFree( vTypes );
+    Vec_IntFree( vBufs );
+    return pvMap;
+}
+int Gia_ManDupUifConstrOne( Gia_Man_t * pNew, Gia_Man_t * p, Vec_Int_t * vVec0, Vec_Int_t * vVec1 )
+{
+    Vec_Int_t * vTemp = Vec_IntAlloc( Vec_IntSize(vVec0) );
+    int i, o0, o1, iRes;
+    Vec_IntForEachEntryTwo( vVec0, vVec1, o0, o1, i )
+        Vec_IntPush( vTemp, Gia_ManHashXor(pNew, Gia_ManObj(p, o0)->Value, Abc_LitNot(Gia_ManObj(p, o1)->Value)) );
+    iRes = Gia_ManHashAndMulti( pNew, vTemp );
+    Vec_IntFree( vTemp );
+    return iRes;
+}
+int Gia_ManDupUifConstr( Gia_Man_t * pNew, Gia_Man_t * p, Vec_Wec_t ** pvMap, int nTypes )
+{
+    int t, i, k, iUif = 1;
+    for ( t = 0; t < nTypes; t++ )
+    {
+        assert( Vec_WecSize(pvMap[2*t+0]) == Vec_WecSize(pvMap[2*t+1]) );
+        for ( i = 0;     i < Vec_WecSize(pvMap[2*t+0]); i++ )
+        for ( k = i + 1; k < Vec_WecSize(pvMap[2*t+0]); k++ )
+        {
+            int iCond1 = Gia_ManDupUifConstrOne( pNew, p, Vec_WecEntry(pvMap[2*t+0], i), Vec_WecEntry(pvMap[2*t+0], k) );
+            int iCond2 = Gia_ManDupUifConstrOne( pNew, p, Vec_WecEntry(pvMap[2*t+1], i), Vec_WecEntry(pvMap[2*t+1], k) );
+            int iRes = Gia_ManHashOr( pNew, Abc_LitNot(iCond1), iCond2 );
+            iUif = Gia_ManHashAnd( pNew, iUif, iRes );
+        }
+    }
+    return iUif;
+}
+Gia_Man_t * Gia_ManDupUif( Gia_Man_t * p )
+{
+    Vec_Int_t * vTypes = Gia_ManDupUifBoxTypes( p->vBarBufs );
+    Vec_Wec_t ** pvMap = Gia_ManDupUifBuildMap( p );
+    Gia_Man_t * pNew, * pTemp; Gia_Obj_t * pObj;
+    int i, iUif = 0;
+    pNew = Gia_ManStart( Gia_ManObjNum(p) );
+    pNew->pName = Abc_UtilStrsav( p->pName );
+    pNew->pSpec = Abc_UtilStrsav( p->pSpec );
+    Gia_ManConst0(p)->Value = 0;
+    Gia_ManHashAlloc( pNew );
+    Gia_ManForEachObj1( p, pObj, i )
+    {
+        if ( Gia_ObjIsBuf(pObj) )
+            pObj->Value = Gia_ManAppendBuf( pNew, Gia_ObjFanin0Copy(pObj) );
+        else if ( Gia_ObjIsAnd(pObj) )
+            pObj->Value = Gia_ManHashAnd( pNew, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
+        else if ( Gia_ObjIsCi(pObj) )
+            pObj->Value = Gia_ManAppendCi( pNew );
+        else if ( Gia_ObjIsCo(pObj) )
+            pObj->Value = Gia_ObjFanin0Copy(pObj);
+    }
+    iUif = Gia_ManDupUifConstr( pNew, p, pvMap, Vec_IntSize(vTypes) );
+    Gia_ManForEachCo( p, pObj, i )
+        Gia_ManAppendCo( pNew, Gia_ManHashAnd(pNew, pObj->Value, iUif) );
+    pNew = Gia_ManCleanup( pTemp = pNew );
+    Gia_ManStop( pTemp );
+    for ( i = 0; i < 2*Vec_IntSize(vTypes); i++ )
+        Vec_WecFree( pvMap[i] );
+    ABC_FREE( pvMap );
+    if ( p->vBarBufs )
+        pNew->vBarBufs = Vec_IntDup( p->vBarBufs );
+    printf( "Added UIF constraints for %d type%s of boxes.\n", Vec_IntSize(vTypes), Vec_IntSize(vTypes) > 1 ? "s" :"" );
+    Vec_IntFree( vTypes );
+    return pNew;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+Vec_Int_t * Gia_ManDupBlackBoxBuildMap( Gia_Man_t * p )
+{
+    Vec_Int_t * vMap = Vec_IntAlloc( p->nBufs ); int i, Item;
+    Vec_IntForEachEntry( p->vBarBufs, Item, i )
+        Vec_IntFillExtra( vMap, Vec_IntSize(vMap) + (Item >> 16), Item & 1 );
+    assert( p->nBufs == Vec_IntSize(vMap) );
+    return vMap;
+}
+Gia_Man_t * Gia_ManDupBlackBox( Gia_Man_t * p )
+{
+    Vec_Int_t * vMap = Gia_ManDupBlackBoxBuildMap( p );
+    Gia_Man_t * pNew, * pTemp;
+    Gia_Obj_t * pObj;
+    int i, k = 0, iCi = 0, nCis = Gia_ManCiNum(p) + Vec_IntSum(vMap);
+    pNew = Gia_ManStart( Gia_ManObjNum(p) );
+    pNew->pName = Abc_UtilStrsav( p->pName );
+    pNew->pSpec = Abc_UtilStrsav( p->pSpec );
+    Gia_ManConst0(p)->Value = 0;
+    for ( i = 0; i < nCis; i++ )
+        Gia_ManAppendCi( pNew );
+    Gia_ManHashAlloc( pNew );
+    Gia_ManForEachObj1( p, pObj, i )
+    {
+        if ( Gia_ObjIsBuf(pObj) )
+        {
+            if ( Vec_IntEntry(vMap, k++) ) // out
+                pObj->Value = Gia_ManCiLit(pNew, iCi++);
+            else
+                pObj->Value = Gia_ObjFanin0Copy(pObj);
+        }
+        else if ( Gia_ObjIsAnd(pObj) )
+            pObj->Value = Gia_ManHashAnd( pNew, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
+        else if ( Gia_ObjIsCi(pObj) )
+            pObj->Value = Gia_ManCiLit(pNew, iCi++);
+        else if ( Gia_ObjIsCo(pObj) )
+            pObj->Value = Gia_ManAppendCo( pNew, Gia_ObjFanin0Copy(pObj) );
+    }
+    assert( k == p->nBufs && iCi == nCis );
+    pNew = Gia_ManCleanup( pTemp = pNew );
+    Gia_ManStop( pTemp );
+    Vec_IntFree( vMap );
+    return pNew;
+}
+
 ////////////////////////////////////////////////////////////////////////
 ///                       END OF FILE                                ///
 ////////////////////////////////////////////////////////////////////////
