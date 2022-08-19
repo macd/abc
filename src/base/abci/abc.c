@@ -8766,11 +8766,13 @@ int Abc_CommandTwoExact( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Exa_ManExactSynthesis( Bmc_EsPar_t * pPars );
     extern void Exa_ManExactSynthesis2( Bmc_EsPar_t * pPars );
-    int c;
+    extern void Exa_ManExactSynthesis4( Bmc_EsPar_t * pPars );
+    extern void Exa_ManExactSynthesis5( Bmc_EsPar_t * pPars );
+    int c, fKissat = 0, fKissat2 = 0;
     Bmc_EsPar_t Pars, * pPars = &Pars;
     Bmc_EsParSetDefault( pPars );
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "INTaogvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "INTadconugklvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -8810,11 +8812,29 @@ int Abc_CommandTwoExact( Abc_Frame_t * pAbc, int argc, char ** argv )
         case 'a':
             pPars->fOnlyAnd ^= 1;
             break;
+        case 'd':
+            pPars->fDynConstr ^= 1;
+            break;
+        case 'c':
+            pPars->fDumpCnf ^= 1;
+            break;
         case 'o':
             pPars->fFewerVars ^= 1;
             break;
+        case 'n':
+            pPars->fOrderNodes ^= 1;
+            break;
+        case 'u':
+            pPars->fUniqFans ^= 1;
+            break;
         case 'g':
             pPars->fGlucose ^= 1;
+            break;
+        case 'k':
+            fKissat ^= 1;
+            break;
+        case 'l':
+            fKissat2 ^= 1;
             break;
         case 'v':
             pPars->fVerbose ^= 1;
@@ -8847,21 +8867,31 @@ int Abc_CommandTwoExact( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Function should not have more than 10 inputs.\n" );
         return 1;
     }
-    if ( pPars->fGlucose )
+    if ( fKissat )
+        Exa_ManExactSynthesis4( pPars );
+    else if ( fKissat2 )
+        Exa_ManExactSynthesis5( pPars );
+    else if ( pPars->fGlucose )
         Exa_ManExactSynthesis( pPars );
     else
         Exa_ManExactSynthesis2( pPars );
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: twoexact [-INT <num>] [-aogvh] <hex>\n" );
+    Abc_Print( -2, "usage: twoexact [-INT <num>] [-adconugklvh] <hex>\n" );
     Abc_Print( -2, "\t           exact synthesis of multi-input function using two-input gates\n" );
     Abc_Print( -2, "\t-I <num> : the number of input variables [default = %d]\n", pPars->nVars );
     Abc_Print( -2, "\t-N <num> : the number of two-input nodes [default = %d]\n", pPars->nNodes );
     Abc_Print( -2, "\t-T <num> : the runtime limit in seconds [default = %d]\n", pPars->RuntimeLim );
     Abc_Print( -2, "\t-a       : toggle using only AND-gates (without XOR-gates) [default = %s]\n", pPars->fOnlyAnd ? "yes" : "no" );
+    Abc_Print( -2, "\t-d       : toggle using dynamic constraint addition [default = %s]\n", pPars->fDynConstr ? "yes" : "no" );
+    Abc_Print( -2, "\t-c       : toggle dumping CNF into a file [default = %s]\n", pPars->fDumpCnf ? "yes" : "no" );
     Abc_Print( -2, "\t-o       : toggle using additional optimizations [default = %s]\n", pPars->fFewerVars ? "yes" : "no" );
+    Abc_Print( -2, "\t-n       : toggle ordering internal nodes [default = %s]\n", pPars->fOrderNodes ? "yes" : "no" );
+    Abc_Print( -2, "\t-u       : toggle using unique fanouts [default = %s]\n", pPars->fUniqFans ? "yes" : "no" );
     Abc_Print( -2, "\t-g       : toggle using Glucose 3.0 by Gilles Audemard and Laurent Simon [default = %s]\n", pPars->fGlucose ? "yes" : "no" );
+    Abc_Print( -2, "\t-k       : toggle using Kissat by Armin Biere [default = %s]\n", fKissat ? "yes" : "no" );
+    Abc_Print( -2, "\t-l       : toggle using Kissat by Armin Biere [default = %s]\n", fKissat2 ? "yes" : "no" );
     Abc_Print( -2, "\t-v       : toggle verbose printout [default = %s]\n", pPars->fVerbose ? "yes" : "no" );
     Abc_Print( -2, "\t-h       : print the command usage\n" );
     Abc_Print( -2, "\t<hex>    : truth table in hex notation\n" );
@@ -50234,6 +50264,14 @@ int Abc_CommandAbc9Test( Abc_Frame_t * pAbc, int argc, char ** argv )
     {
         Abc_Print( -1, "Abc_CommandAbc9Test(): There is no AIG.\n" );
         return 1;
+    }
+    if ( argc == globalUtilOptind + 1 )
+    {
+        extern void Gia_ManUpdateCoPhase( Gia_Man_t * pNew, Gia_Man_t * pOld );
+        Gia_Man_t * pTemp = Gia_AigerRead( argv[globalUtilOptind], 0, 0, 0 );
+        Gia_ManUpdateCoPhase( pAbc->pGia, pTemp );
+        Gia_ManStop( pTemp );
+        return 0;
     }
     Abc_FrameUpdateGia( pAbc, Gia_ManPerformNewResub(pAbc->pGia, 100, 6, 1, 1) );
 //    printf( "AIG in \"%s\" has the sum of output support sizes equal to %d.\n", pAbc->pGia->pSpec, Gia_ManSumTotalOfSupportSizes(pAbc->pGia) );
