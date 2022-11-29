@@ -8,7 +8,7 @@ make OPTFLAGS=-O ABC_USE_PIC=1 ABC_USE_NO_READLINE=1 libabc.so -j8
 cd ABC-python
 swig -python ABC.i
 hdrs=(`locate Python.h`)
-VAR=${hdrs[0]}
+VAR=${hdrs[-1]}
 DIR=${VAR%/*}
 # If locate doesn't work, try something like the following
 #DIR=/home/macd/anaconda3/include/python3.8
