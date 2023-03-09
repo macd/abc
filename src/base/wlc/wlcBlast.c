@@ -623,7 +623,7 @@ void Wlc_BlastDivider( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int n
     ABC_FREE( pQuo );
 }
 // non-restoring divider
-void Wlc_BlastDivider2( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int nDiv, int fQuo, Vec_Int_t * vRes )
+void Wlc_BlastDividerNR( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int nDiv, int fQuo, Vec_Int_t * vRes )
 {
     int i, * pRes  = Vec_IntArray(vRes);
     int k, * pQuo  = ABC_ALLOC( int, nNum );
@@ -653,7 +653,14 @@ void Wlc_BlastDivider2( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int 
     }
     ABC_FREE( pQuo );
 }
-void Wlc_BlastDividerSigned( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int nDiv, int fQuo, Vec_Int_t * vRes )
+void Wlc_BlastDividerTop( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int nDiv, int fQuo, Vec_Int_t * vRes, int fNonRest )
+{
+    if ( fNonRest )
+        Wlc_BlastDividerNR( pNew, pNum, nNum, pDiv, nDiv, fQuo, vRes );
+    else
+        Wlc_BlastDivider( pNew, pNum, nNum, pDiv, nDiv, fQuo, vRes );
+}
+void Wlc_BlastDividerSigned( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv, int nDiv, int fQuo, Vec_Int_t * vRes, int fNonRest )
 {
     Vec_Int_t * vNum   = Vec_IntAlloc( nNum );
     Vec_Int_t * vDiv   = Vec_IntAlloc( nDiv );
@@ -665,10 +672,10 @@ void Wlc_BlastDividerSigned( Gia_Man_t * pNew, int * pNum, int nNum, int * pDiv,
     int k, iDiffSign   = Gia_ManHashXor( pNew, pNum[nNum-1], pDiv[nDiv-1] );
     Wlc_BlastMinus( pNew, pNum, nNum, vNum );
     Wlc_BlastMinus( pNew, pDiv, nDiv, vDiv );
-    Wlc_BlastDivider( pNew,               pNum, nNum,               pDiv, nDiv, fQuo, vRes00 );
-    Wlc_BlastDivider( pNew,               pNum, nNum, Vec_IntArray(vDiv), nDiv, fQuo, vRes01 );
-    Wlc_BlastDivider( pNew, Vec_IntArray(vNum), nNum,               pDiv, nDiv, fQuo, vRes10 );
-    Wlc_BlastDivider( pNew, Vec_IntArray(vNum), nNum, Vec_IntArray(vDiv), nDiv, fQuo, vRes11 );
+    Wlc_BlastDividerTop( pNew,               pNum, nNum,               pDiv, nDiv, fQuo, vRes00, fNonRest );
+    Wlc_BlastDividerTop( pNew,               pNum, nNum, Vec_IntArray(vDiv), nDiv, fQuo, vRes01, fNonRest );
+    Wlc_BlastDividerTop( pNew, Vec_IntArray(vNum), nNum,               pDiv, nDiv, fQuo, vRes10, fNonRest );
+    Wlc_BlastDividerTop( pNew, Vec_IntArray(vNum), nNum, Vec_IntArray(vDiv), nDiv, fQuo, vRes11, fNonRest );
     Vec_IntClear( vRes );
     for ( k = 0; k < nNum; k++ )
     {
@@ -1124,13 +1131,14 @@ void Wlc_BlastBooth( Gia_Man_t * pNew, int * pArgA, int * pArgB, int nArgA, int 
             int This = i == nArgA ? FillA : pArgA[i];
             int Prev = i ? pArgA[i-1] : 0;
             int Part = Gia_ManHashOr( pNew, Gia_ManHashAnd(pNew, One, This), Gia_ManHashAnd(pNew, Two, Prev) );
-            
             pp = Gia_ManHashXor( pNew, Part, Neg );
             if ( pp == 0 || (fSigned && i == nArgA) )
                 continue;
-
-            Vec_WecPush( vProds,  k+i, pp );
-            Vec_WecPush( vLevels, k+i, 0 );
+            if ( pp )
+            {
+                Vec_WecPush( vProds,  k+i, pp );
+                Vec_WecPush( vLevels, k+i, 0 );
+            }
         }
         if ( fSigned ) i--;
         // perform sign extension
@@ -1143,13 +1151,19 @@ void Wlc_BlastBooth( Gia_Man_t * pNew, int * pArgA, int * pArgB, int nArgA, int 
             Vec_WecPush( vProds,  k+i+1, Sign );
             Vec_WecPush( vLevels, k+i+1, 0 );
 
+            if ( Sign != 1 )
+            {
             Vec_WecPush( vProds,  k+i+2, Abc_LitNot(Sign) );
             Vec_WecPush( vLevels, k+i+2, 0 );
+            }
         }
         else 
         {
+            if ( Sign != 1 )
+            {
             Vec_WecPush( vProds,  k+i, Abc_LitNot(Sign) );
             Vec_WecPush( vLevels, k+i, 0 );
+            }
 
             Vec_WecPush( vProds,  k+i+1, 1 );
             Vec_WecPush( vLevels, k+i+1, 0 );
@@ -1817,9 +1831,9 @@ Gia_Man_t * Wlc_NtkBitBlast( Wlc_Ntk_t * p, Wlc_BstPar_t * pParIn )
             int * pArg0 = Wlc_VecLoadFanins( vTemp0, pFans0, nRange0, nRangeMax, fSigned );
             int * pArg1 = Wlc_VecLoadFanins( vTemp1, pFans1, nRange1, nRangeMax, fSigned );
             if ( fSigned )
-                Wlc_BlastDividerSigned( pNew, pArg0, nRangeMax, pArg1, nRangeMax, pObj->Type == WLC_OBJ_ARI_DIVIDE, vRes );
+                Wlc_BlastDividerSigned( pNew, pArg0, nRangeMax, pArg1, nRangeMax, pObj->Type == WLC_OBJ_ARI_DIVIDE, vRes, pPar->fNonRest );
             else
-                Wlc_BlastDivider( pNew, pArg0, nRangeMax, pArg1, nRangeMax, pObj->Type == WLC_OBJ_ARI_DIVIDE, vRes );
+                Wlc_BlastDividerTop( pNew, pArg0, nRangeMax, pArg1, nRangeMax, pObj->Type == WLC_OBJ_ARI_DIVIDE, vRes, pPar->fNonRest );
             Vec_IntShrink( vRes, nRange );
             if ( !pPar->fDivBy0 )
                 Wlc_BlastZeroCondition( pNew, pFans1, nRange1, vRes );
