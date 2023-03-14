@@ -1642,7 +1642,14 @@ Vec_Int_t * Exa4_ManSolve( char * pFileNameIn, char * pFileNameOut, int TimeOut,
         if ( pFile == NULL )
         {
             printf( "Cannot find the Kissat binary \"%s\".\n", pKissat );
-            return NULL;
+            pKissat = "./kissat";
+            pFile = fopen( pKissat, "rb" );
+            if ( pFile == NULL )
+            {
+                printf( "Cannot find the Kissat binary \"%s\".\n", pKissat );
+                return NULL;
+            }
+            fclose( pFile );        
         }
         fclose( pFile );        
     }
@@ -3617,7 +3624,7 @@ Mini_Aig_t * Exa6_ManGenTest( Vec_Wrd_t * vSimsIn, Vec_Wrd_t * vSimsOut, int nIn
     Abc_PrintTime( 1, "Total runtime", Abc_Clock() - clkTotal );
     return pMini;
 }
-Mini_Aig_t * Mini_AigDup( Mini_Aig_t * p, int ComplIns, int ComplOuts )
+Mini_Aig_t * Mini_AigDupCompl( Mini_Aig_t * p, int ComplIns, int ComplOuts )
 {
     Mini_Aig_t * pNew = Mini_AigStartSupport( Mini_AigPiNum(p), Mini_AigNodeNum(p) );
     Vec_Int_t * vCopies = Vec_IntStartFull( Mini_AigNodeNum(p) ); int k, i = 0, o = 0;
@@ -3706,7 +3713,7 @@ Mini_Aig_t * Exa_ManExactSynthesis6Int( Vec_Wrd_t * vSimsDiv, Vec_Wrd_t * vSimsO
     {
         if ( DivCompl || OutCompl )
         {
-            pMini = Mini_AigDup( pTemp = pMini, DivCompl, OutCompl );
+            pMini = Mini_AigDupCompl( pTemp = pMini, DivCompl, OutCompl );
             Mini_AigStop( pTemp );        
         }
         Mini_AigerWrite( "exa6.aig", pMini, 1 );
