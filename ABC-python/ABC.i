@@ -48,6 +48,40 @@ def abc_start():
         return status, msg
 
     return abc_cmd
+
+# So yeah, kinda brittle parsing of the abc stime command. Let's hope Alan
+# doesn't change it often.
+def parse_stime(timing):
+    st, res = timing
+    if st != 0:
+        print("Error parsing timing: ABC result errored")
+        return
+
+    # first find the correct line to parse
+    line = ""
+    for line in res.splitlines():
+        if "Gates" in line and "Area" in line and "Delay" in line:
+            break
+            
+    toks = list(filter(lambda x: x != "", re.split("[ m=\x1b]", line)))
+    g = toks.index("Gates")
+    a = toks.index("Area")
+    d = toks.index("Delay")
+    
+    gates = 0
+    area = delay = 0.0
+    
+    try:
+        gates = int(toks[g+1].split('\e')[0])
+        area  = float(toks[a+1].split('\e')[0])
+        delay = float(toks[d+1].split('\e')[0])
+    except:
+        print("Parsing area and delay failed on the following line:")
+        print(res[1])
+        print(toks)
+
+    return (gates, area, delay)
+
 %}    
 
 // If doing manually
