@@ -26,7 +26,7 @@ import sys
 from ctypes import CDLL
 libc = CDLL('libc.so.6')
 import tempfile
-
+import re
 
 def abc_start():
     Abc_Start()
@@ -49,8 +49,7 @@ def abc_start():
 
     return abc_cmd
 
-# So yeah, kinda brittle parsing of the abc stime command. Let's hope Alan
-# doesn't change it often.
+# Kinda brittle parsing of the abc stime command. Let's hope it doesn't change
 def parse_stime(timing):
     st, res = timing
     if st != 0:
