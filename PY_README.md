@@ -60,8 +60,10 @@ the basic ABC transforms.
     '\x1b[1;37mcla                           :\x1b[0m i/o =  128/   65  lat =    0  nd =   836  edge =   1214  cube =   896  lev = 128\n')
 
 
-Of course, we are still left with the job of parsing the raw output of ABC. Here is
-a (brittle) example of parsing the output of the `stime` command:
+Of course, we are still left with the job of parsing the raw output of
+ABC. Here is a (somewhat brittle) example of parsing the output of the
+`stime` command: (The following is now included in the Python wrapper
+and so it is available in Python after the `import ABC` command.
 
     def parse_timing(timing):
         st, res = timing
