@@ -56,8 +56,7 @@ def parse_stime(timing):
         print("Error parsing timing: ABC result errored")
         return
 
-    # first find the correct line to parse
-    line = ""
+    # find the correct line to parse (if we get a multi-line response)
     for line in res.splitlines():
         if "Gates" in line and "Area" in line and "Delay" in line:
             break
@@ -71,9 +70,9 @@ def parse_stime(timing):
     area = delay = 0.0
     
     try:
-        gates = int(toks[g+1].split('\e')[0])
-        area  = float(toks[a+1].split('\e')[0])
-        delay = float(toks[d+1].split('\e')[0])
+        gates = int(toks[g+1])
+        area  = float(toks[a+1])
+        delay = float(toks[d+1])
     except:
         print("Parsing area and delay failed on the following line:")
         print(res[1])
