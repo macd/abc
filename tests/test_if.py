@@ -4,8 +4,6 @@ import os.path
 # Use a relative pathname for the designs
 AIGDIR = os.path.join(os.path.dirname(__file__), "designs", "aig")
 LIBDIR  = os.path.join(os.path.dirname(__file__), "libraries")
-#AIGDIR = os.path.join(os.path.dirname("."), "designs", "aig")
-#LIBDIR  = os.path.join(os.path.dirname("."), "libraries")
 
 abc_cmd = ABC.abc_start()
 
