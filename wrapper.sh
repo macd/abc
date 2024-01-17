@@ -20,4 +20,4 @@ pip install -e ABC-python
 
 # now make the executable abc with readline and assert enabled.
 make clean
-make OPTFLAGS=-O -j8
+CFLAGS=-DNDEBUG make OPTFLAGS=-O -j8
