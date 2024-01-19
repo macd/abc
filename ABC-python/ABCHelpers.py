@@ -2,7 +2,8 @@ import re
 from collections import namedtuple
 
 Abc_delay = namedtuple('Abc_delay', 'gates area delay')
-Abc_stats = namedtuple('Abc_stats', 'inputs outputs latches ands nd edges levels area delay')
+Abc_stats = namedtuple('Abc_stats', 'inputs outputs latches ands nodes edges levels cubes area delay')
+                                  
 
 # Kinda brittle parsing of the abc stime command. Let's hope it doesn't change
 def parse_stime(timing):
@@ -15,15 +16,15 @@ def parse_stime(timing):
     for line in res.splitlines():
         if "Gates" in line and "Area" in line and "Delay" in line:
             break
-            
+
     toks = list(filter(lambda x: x != "", re.split("[ m=\x1b]", line)))
     g = toks.index("Gates")
     a = toks.index("Area")
     d = toks.index("Delay")
-    
+
     gates = 0
     area = delay = 0.0
-    
+
     try:
         gates = int(toks[g+1])
         area  = float(toks[a+1])
@@ -36,9 +37,19 @@ def parse_stime(timing):
     return (gates, area, delay)
 
 
+def get_val(token, line):
+    if token in line:
+        # get rid of any enclosing space
+        token = token.split()[0]
+        toks = list(filter(lambda x: x != "", re.split("[ m=/\x1b\n]", line)))
+        return int(toks[toks.index(token)+1])
+
+    return -1
+
 # More brittle parsing, this time of print_stats command.
 # NOTE: We get different info depending on whether the network is mapped
-#       or not.
+#       or not (and other things too), so we have to test the output to
+#       see what is actually there.
 def parse_stats(status):
     st, res = status
     if st != 0:
@@ -47,48 +58,22 @@ def parse_stats(status):
 
     # find the correct line to parse (if we get a multi-line response)
     for line in res.splitlines():
-        if "i/o" in line and "lat" in line and "and" in line:
+        if "i/o" in line:
             break
 
-    # There should be an ABC command to query whether a network is mapped, but
-    # I did not find it (yet), so if it is reporting a delay, it must be mapped.
-    mapped = "delay" in line
+    inputs  = get_val("o",    line)
+    latches = get_val("lat",  line)
+    levels  = get_val("lev",  line)
+    nodes   = get_val(" nd ",   line)
+    edges   = get_val("edge", line)
+    ands    = get_val("and",  line)
+    cubes   = get_val("cube", line)
 
     toks = list(filter(lambda x: x != "", re.split("[ m=/\x1b\n]", line)))
+    outputs = int(toks[toks.index("o")+2]) if "i/o" in line else -1
+    area    = float(toks[toks.index("area")+1]) if "area" in line else 0.0
+    delay   = float(toks[toks.index("delay")+1]) if "delay" in line else 0.0
 
-    # -1 means uninitialized
-    inputs = outputs = latches = ands = levels = nodes = edges = gates = -1  
-    area = delay = 0.0                     
-    if mapped:
-        io  = toks.index("o")
-        lat = toks.index("lat")
-        nd  = toks.index("nd")
-        egd = toks.index("edge")
-        lev = toks.index("lev")
-        ara = toks.index("area")
-        dl  = toks.index("delay")
-    else:
-        io  = toks.index("o")
-        lat = toks.index("lat")
-        ad  = toks.index("and")
-        lev = toks.index("lev")
-    
-    try:
-        inputs  = int(toks[io+1])
-        outputs = int(toks[io+2])
-        latches = int(toks[lat+1])
-        levels  = int(toks[lev+1])
-        if mapped:
-            nodes = int(toks[nd+1])
-            edges = int(toks[egd+1])
-            area  = int(toks[ara+1])
-            delay = float(toks[dl+1])
-        else:
-            ands = int(toks[ad+1])
+    return Abc_stats(inputs, outputs, latches, ands, nodes, edges, levels, cubes,
+                     area, delay)
 
-    except:
-        print("Parsing stats failed on the following line:")
-        print(res[1])
-        print(toks)
-
-    return Abc_stats(inputs, outputs, latches, ands, nodes, edges, levels, area, delay)
