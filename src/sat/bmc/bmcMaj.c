@@ -23,6 +23,7 @@
 #include "misc/util/utilTruth.h"
 #include "sat/glucose/AbcGlucose.h"
 #include "aig/miniaig/miniaig.h"
+#include "base/io/ioResub.h"
 
 ABC_NAMESPACE_IMPL_START
 
@@ -3419,7 +3420,7 @@ void Exa6_ManGenMint( Exa6_Man_t * p, int iMint, int fOnlyAnd, int fFancy )
         assert( t );
         if ( ~t )
         {
-            Abc_Tt6IsopCover( t, t, p->nOuts, pCover, &nCubes );
+            Abc_Tt6IsopCover( ~t, ~t, p->nOuts, pCover, &nCubes );
             for ( c = 0; c < nCubes; c++ )
             {
                 int nLits = 0;
@@ -3663,7 +3664,7 @@ Vec_Wrd_t * Exa6_ManTransformOutputs( Vec_Wrd_t * vOuts, int nOuts )
 Vec_Wrd_t * Exa6_ManTransformInputs( Vec_Wrd_t * vIns )
 {
     Vec_Wrd_t * vRes = Vec_WrdAlloc( Vec_WrdSize(vIns) );
-    int i, Polar = Vec_WrdEntry( vIns, 0 ); word Entry;
+    int i; word Entry, Polar = Vec_WrdEntry( vIns, 0 );
     Vec_WrdForEachEntry( vIns, Entry, i )
         Vec_WrdPush( vRes, Entry ^ Polar );
     return vRes;
@@ -3678,7 +3679,7 @@ void Exa_ManExactPrint( Vec_Wrd_t * vSimsDiv, Vec_Wrd_t * vSimsOut, int nDivs, i
         Abc_TtPrintBits( &Entry, 1 << nOuts );
     printf( "\n" );
 }
-Mini_Aig_t * Exa_ManExactSynthesis6Int( Vec_Wrd_t * vSimsDiv, Vec_Wrd_t * vSimsOut, int nVars, int nDivs, int nOuts, int nNodes, int fOnlyAnd, int fVerbose )
+Mini_Aig_t * Exa_ManExactSynthesis6Int( Vec_Wrd_t * vSimsDiv, Vec_Wrd_t * vSimsOut, int nVars, int nDivs, int nOuts, int nNodes, int fOnlyAnd, int fVerbose, char * pFileName )
 {
     Mini_Aig_t * pTemp, * pMini; 
     Vec_Wrd_t * vSimsDiv2, * vSimsOut2;
@@ -3700,10 +3701,10 @@ Mini_Aig_t * Exa_ManExactSynthesis6Int( Vec_Wrd_t * vSimsDiv, Vec_Wrd_t * vSimsO
             pMini = Mini_AigDupCompl( pTemp = pMini, DivCompl, OutCompl );
             Mini_AigStop( pTemp );        
         }
-        Mini_AigerWrite( "exa6.aig", pMini, 1 );
-        if ( nVars <= 6 )
-            Exa_ManMiniVerify( pMini, vSimsDiv, vSimsOut );
-        printf( "\n" );
+        Mini_AigerWrite( pFileName ? Extra_FileNameGenericAppend(pFileName, "_twoexact.aig") : (char *)"exa6.aig", pMini, 1 );
+        //if ( nVars <= 6 )
+        //    Exa_ManMiniVerify( pMini, vSimsDiv, vSimsOut );
+        //printf( "\n" );
         //Mini_AigStop( pMini );
     }
     Vec_WrdFreeP( &vSimsDiv2 );
@@ -3714,11 +3715,37 @@ void Exa_ManExactSynthesis6( Bmc_EsPar_t * pPars, char * pFileName )
 {
     Mini_Aig_t * pMini = NULL;
     Vec_Wrd_t * vSimsDiv = NULL, * vSimsOut = NULL;
-    int nDivs, nOuts, nVars = Exa6_ReadFile( pFileName, &vSimsDiv, &vSimsOut, &nDivs, &nOuts );
+    int i, k, nDivs, nOuts, nVars = 0;
+    if ( !strcmp(pFileName + strlen(pFileName) - 3, "rel") )
+        nVars = Exa6_ReadFile( pFileName, &vSimsDiv, &vSimsOut, &nDivs, &nOuts );
+    else if ( !strcmp(pFileName + strlen(pFileName) - 3, "pla") ) {
+        Abc_RData_t * p  = Abc_ReadPla( pFileName );
+        Abc_RData_t * p2 = p ? Abc_RData2Rel( p ) : NULL;
+        if ( !p || !p2 ) return;
+        nDivs = 0;
+        nOuts = p->nOuts;
+        nVars = p->nIns;
+        vSimsDiv = Vec_WrdStart( p2->nPats );
+        for ( k = 0; k < p->nIns; k++ )
+            for ( i = 0; i < p2->nPats; i++ )
+                if ( Abc_RDataGetIn(p2, k, i) )
+                    Abc_InfoSetBit((unsigned *)Vec_WrdEntryP(vSimsDiv, i), 1+k);
+        vSimsOut = Vec_WrdStart( p2->nPats );
+        for ( k = 0; k < (1 << p->nOuts); k++ )
+            for ( i = 0; i < p2->nPats; i++ )
+                if ( Abc_RDataGetOut(p2, k, i) )
+                    Abc_InfoSetBit((unsigned *)Vec_WrdEntryP(vSimsOut, i), k);
+        Abc_RDataStop( p );
+        Abc_RDataStop( p2 );       
+    }
+    else
+        printf( "Unknown file extension in file \"%s\".\n", pFileName );        
     if ( nVars == 0 )
         return;
+    //Vec_WrdPrintBin( vSimsDiv, 1 );
+    //Vec_WrdPrintBin( vSimsOut, 1 );
     Exa6_SortSims( vSimsDiv, vSimsOut );
-    pMini = Exa_ManExactSynthesis6Int( vSimsDiv, vSimsOut, nVars, nDivs, nOuts, pPars->nNodes, pPars->fOnlyAnd, pPars->fVerbose );
+    pMini = Exa_ManExactSynthesis6Int( vSimsDiv, vSimsOut, nVars, nDivs, nOuts, pPars->nNodes, pPars->fOnlyAnd, pPars->fVerbose, pFileName );
     Vec_WrdFreeP( &vSimsDiv );
     Vec_WrdFreeP( &vSimsOut );
     if ( pMini ) Mini_AigStop( pMini );

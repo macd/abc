@@ -148,6 +148,8 @@ static int Abc_CommandRewrite                ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandRefactor               ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandRestructure            ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandResubstitute           ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandResubUnate             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandResubCore              ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandResubCheck             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandRr                     ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandCascade                ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -605,6 +607,9 @@ static int Abc_CommandAbc9PutOnTop           ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandAbc9BRecover           ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9StrEco             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9GenCex             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9Odc                ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9GenRel             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9Window             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
 static int Abc_CommandAbc9Test               ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
@@ -930,6 +935,8 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "Synthesis",    "refactor",      Abc_CommandRefactor,         1 );
 //    Cmd_CommandAdd( pAbc, "Synthesis",    "restructure",   Abc_CommandRestructure,      1 );
     Cmd_CommandAdd( pAbc, "Synthesis",    "resub",         Abc_CommandResubstitute,     1 );
+    Cmd_CommandAdd( pAbc, "Synthesis",    "resub_unate",   Abc_CommandResubUnate,       1 );
+    Cmd_CommandAdd( pAbc, "Synthesis",    "resub_core",    Abc_CommandResubCore,        1 );
     Cmd_CommandAdd( pAbc, "Synthesis",    "resub_check",   Abc_CommandResubCheck,       0 );
 //    Cmd_CommandAdd( pAbc, "Synthesis",    "rr",            Abc_CommandRr,               1 );
     Cmd_CommandAdd( pAbc, "Synthesis",    "cascade",       Abc_CommandCascade,          1 );
@@ -1392,6 +1399,9 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "ABC9",         "&brecover",     Abc_CommandAbc9BRecover,               0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&str_eco",      Abc_CommandAbc9StrEco,                 0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&gencex",       Abc_CommandAbc9GenCex,                 0 );    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&odc",          Abc_CommandAbc9Odc,                    0 );    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&genrel",       Abc_CommandAbc9GenRel,                 0 );    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&window",       Abc_CommandAbc9Window,                 0 );    
     
     Cmd_CommandAdd( pAbc, "ABC9",         "&test",         Abc_CommandAbc9Test,         0 );
     {
@@ -8361,9 +8371,186 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
+int Abc_CommandResubUnate( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Gia_ManResubUnateOne( char * pFileName, int nLimit, int nDivMax, int fWriteSol, int fVerbose );
+    Gia_Man_t * pTemp;
+    int nLimit    = 16;
+    int nDivMax   = 50;
+    int fWriteSol =  0;
+    int fVerbose  =  0, c;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "LDsvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'L':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-L\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nLimit = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nLimit < 0 )
+                goto usage;
+            break;   
+        case 'D':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-D\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nDivMax = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nDivMax < 0 )
+                goto usage;
+            break;                        
+        case 's':
+            fWriteSol ^= 1;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( argc != globalUtilOptind + 1 ) 
+    {
+        Abc_Print( -1, "Input file should be given on the command line.\n" );
+        return 1;
+    }
+    pTemp = Gia_ManResubUnateOne( argv[globalUtilOptind], nLimit, nDivMax, fWriteSol, fVerbose );
+    if ( pTemp )
+    {
+        Aig_Man_t * pMan = Gia_ManToAig( pTemp, 0 );
+        Abc_Ntk_t * pNtk = Abc_NtkFromAigPhase( pMan );
+        Abc_FrameReplaceCurrentNetwork( pAbc, pNtk );
+        Aig_ManStop( pMan );
+        Gia_ManStop( pTemp );
+        return 0;
+    }
+    Abc_Print( 0, "The networks is not generated.\n" );    
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: resub_unate [-LD <num>] [-svh] <file>\n" );
+    Abc_Print( -2, "\t         solves one instance of the resub problem\n" );
+    Abc_Print( -2, "\t-L num : the limit on the number of nodes [default = %d]\n",                  nLimit );
+    Abc_Print( -2, "\t-D num : the maximum number of binate divisors to consider [default = %d]\n", nDivMax );
+    Abc_Print( -2, "\t-s     : toggle saving the result in the input file [default = %s]\n",        fWriteSol? "yes": "no" );
+    Abc_Print( -2, "\t-v     : toggle verbose printout [default = %s]\n",                           fVerbose? "yes": "no" );
+    Abc_Print( -2, "\t-h     : print the command usage\n");
+    Abc_Print( -2, "\t<file> : resub problem file name\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandResubCore( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Supp_ManSolveOne( char * pFileName, int nIters, int nRounds, int fWriteSol, int fVerbose );
+    Gia_Man_t * pTemp;
+    int nIters    = 1;
+    int nRounds   = 1;
+    int fWriteSol = 0;
+    int fVerbose  = 0, c;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "IRsvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'I':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-I\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nIters = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nIters < 0 )
+                goto usage;
+            break;   
+        case 'R':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-R\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nRounds = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nRounds < 0 )
+                goto usage;
+            break;                        
+        case 's':
+            fWriteSol ^= 1;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( argc != globalUtilOptind + 1 ) 
+    {
+        Abc_Print( -1, "Input file should be given on the command line.\n" );
+        return 1;
+    }
+    pTemp = Supp_ManSolveOne( argv[globalUtilOptind], nIters, nRounds, fWriteSol, fVerbose );
+    if ( pTemp )
+    {
+        Aig_Man_t * pMan = Gia_ManToAig( pTemp, 0 );
+        Abc_Ntk_t * pNtk = Abc_NtkFromAigPhase( pMan );
+        Abc_FrameReplaceCurrentNetwork( pAbc, pNtk );
+        Aig_ManStop( pMan );
+        Gia_ManStop( pTemp );
+        return 0;
+    }
+    Abc_Print( 0, "The networks is not generated.\n" );    
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: resub_core [-IR <num>] [-svh] <file>\n" );
+    Abc_Print( -2, "\t         solves one instance of the resub problem\n" );
+    Abc_Print( -2, "\t-I num : the number of iterations [default = %d]\n",                   nIters );
+    Abc_Print( -2, "\t-R num : the number of rounds in each iteration [default = %d]\n",     nRounds );
+    Abc_Print( -2, "\t-s     : toggle saving the result in the input file [default = %s]\n", fWriteSol? "yes": "no" );
+    Abc_Print( -2, "\t-v     : toggle verbose printout [default = %s]\n",                    fVerbose? "yes": "no" );
+    Abc_Print( -2, "\t-h     : print the command usage\n");
+    Abc_Print( -2, "\t<file> : resub problem file name\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
 int Abc_CommandResubCheck( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Res6_ManResubCheck( char * pFileNameRes, char * pFileNameSol, int fVerbose );
+    extern void Res6_ManResubCheckPla( char * pFileName, int fVerbose );
     char * pFileR = NULL, * pFileS = NULL;
     int fVerbose = 0, c;
     Extra_UtilGetoptReset();
@@ -8395,7 +8582,10 @@ int Abc_CommandResubCheck( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Incorrect number of command line arguments.\n" );
         return 1;
     }
-    Res6_ManResubCheck( pFileR, pFileS, fVerbose );
+    if ( !strcmp(pFileR + strlen(pFileR) - 3, "pla") )
+        Res6_ManResubCheckPla( pFileR, fVerbose );
+    else
+        Res6_ManResubCheck( pFileR, pFileS, fVerbose );
     return 0;
 
 usage:
@@ -14811,6 +15001,7 @@ int Abc_CommandTest( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
 */
     //Gia_ManTestProblem();
+    //Abc_ReadPlaTest( "resub2.pla" );
     return 0;
 usage:
     Abc_Print( -2, "usage: test [-CKDNM] [-aovwh] <file_name>\n" );
@@ -43849,12 +44040,15 @@ usage:
 int Abc_CommandAbc9Unmap( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Gia_ManTestStruct( Gia_Man_t * p );
-    int c, fVerbose = 0;
+    int c, fConvert = 0, fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "vh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "cvh" ) ) != EOF )
     {
         switch ( c )
         {
+        case 'c':
+            fConvert ^= 1;
+            break;
         case 'v':
             fVerbose ^= 1;
             break;
@@ -43869,16 +44063,21 @@ int Abc_CommandAbc9Unmap( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Abc_CommandAbc9Struct(): There is no AIG to map.\n" );
         return 1;
     }
-    Vec_IntFreeP( &pAbc->pGia->vMapping );
-    Vec_IntFreeP( &pAbc->pGia->vPacking );
-    Vec_IntFreeP( &pAbc->pGia->vCellMapping );
-    Vec_IntFreeP( &pAbc->pGia->vEdge1 );
-    Vec_IntFreeP( &pAbc->pGia->vEdge2 );
+    if ( fConvert )
+        Cmd_CommandExecute( pAbc, "&put; unmap; &get -m" );    
+    else {
+        Vec_IntFreeP( &pAbc->pGia->vMapping );
+        Vec_IntFreeP( &pAbc->pGia->vPacking );
+        Vec_IntFreeP( &pAbc->pGia->vCellMapping );
+        Vec_IntFreeP( &pAbc->pGia->vEdge1 );
+        Vec_IntFreeP( &pAbc->pGia->vEdge2 );
+    }
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &unmap [-vh]\n" );
+    Abc_Print( -2, "usage: &unmap [-cvh]\n" );
     Abc_Print( -2, "\t           removes mapping from the current network\n" );
+    Abc_Print( -2, "\t-c       : toggle converting cell mapping into LUT mapping [default = %s]\n", fConvert? "yes": "no" );
     Abc_Print( -2, "\t-v       : toggle printing optimization summary [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h       : print the command usage\n");
     return 1;
@@ -52875,6 +53074,221 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
+int Abc_CommandAbc9Odc( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Gia_ManDupOdc( Gia_Man_t * p, int iObj, int fVerbose );
+    Gia_Man_t * pTemp;
+    int c, iNode = -1, fVerbose = 0;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Nvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'N':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-N\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            iNode = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( iNode < 0 )
+                goto usage;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9Odc(): There is no AIG.\n" );
+        return 0;
+    }
+    if ( !Gia_ObjIsAnd( Gia_ManObj(pAbc->pGia, iNode) ) )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9Odc(): Object with ID %d is not an internal node.\n", iNode );
+        return 0;
+    }
+    pTemp = Gia_ManDupOdc( pAbc->pGia, iNode, fVerbose );
+    Abc_FrameUpdateGia( pAbc, pTemp );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &odc [-N num] [-vh]\n" );
+    Abc_Print( -2, "\t          generates the complement of the ODC for the node\n" );
+    Abc_Print( -2, "\t-N num  : the node ID [default = undefined]\n" );
+    Abc_Print( -2, "\t-v      : toggles printing verbose information [default = %d]\n", fVerbose ? "yes": "no" );
+    Abc_Print( -2, "\t-h      : print the command usage\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandAbc9GenRel( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern void Gia_ManGenRel( Gia_Man_t * pGia, Vec_Int_t * vInsOuts, int nIns, char * pFileName, int fVerbose );
+    Vec_Int_t * vInsOuts = NULL;
+    int c, nIns = -1, fVerbose = 0;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Ivh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'I':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-N\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nIns = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nIns < 0 )
+                goto usage;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9GenRel(): There is no AIG.\n" );
+        return 0;
+    }
+    if ( nIns < 2 )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9GenRel(): The number of inputs should be given on the command line.\n" );
+        return 0;
+    }
+    if ( argc == globalUtilOptind )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9GenRel(): Node IDs should be given on the command line.\n" );
+        return 0;
+    }
+    if ( argc-globalUtilOptind-nIns-1 < 1 )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9GenRel(): The relation should have at least one output.\n" );
+        return 0;
+    }
+    vInsOuts = Vec_IntAlloc( 100 );
+    for ( c = globalUtilOptind; c < argc-1; c++ )
+        Vec_IntPush( vInsOuts, atoi(argv[c]) );    
+    if ( fVerbose ) 
+    {
+        printf( "Deriving relation for %d inputs and %d outputs: ", nIns, Vec_IntSize(vInsOuts)-nIns );
+        Vec_IntPrint( vInsOuts );
+    }
+    Gia_ManGenRel( pAbc->pGia, vInsOuts, nIns, argv[argc-1], fVerbose );
+    Vec_IntFree( vInsOuts );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &genrel [-I num] [-vh] <node1> <node2> ... <nodeN> <filename>\n" );
+    Abc_Print( -2, "\t          generates Boolean relation for the given logic window\n" );
+    Abc_Print( -2, "\t-I num  : the number of inputs of the relation [default = undefined]\n" );
+    Abc_Print( -2, "\t-v      : toggles printing verbose information [default = %d]\n", fVerbose ? "yes": "no" );
+    Abc_Print( -2, "\t-h      : print the command usage\n");
+    Abc_Print( -2, "\t<nodes> : the list of nodes for inputs and outputs\n");
+    Abc_Print( -2, "\t<file>  : the output file name (extended PLA format)\n");
+    return 1;
+}
+
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandAbc9Window( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Gia_ManDupWindow( Gia_Man_t * p, Vec_Int_t * vCut );
+    Gia_Man_t * pNew = NULL;
+    Vec_Int_t * vCut = NULL;
+    int c, fVerbose = 0;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "vh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9Window(): There is no AIG.\n" );
+        return 0;
+    }
+    if ( argc == globalUtilOptind )
+    {
+        int nCutSize = 6, nCuts = 30;
+        extern void Gia_ManExploreCutsTest( Gia_Man_t * pGia, int nCutSize, int nCuts, int fVerbose );
+        printf( "Here are %d the most frequently appearing %d-cuts:\n", nCutSize, nCuts );
+        Gia_ManExploreCutsTest( pAbc->pGia, nCutSize, nCuts, fVerbose );
+        return 0;
+    }
+    if ( argc-globalUtilOptind < 1 )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9Window(): The window should have at least one support variable.\n" );
+        return 0;
+    }
+    vCut = Vec_IntAlloc( 100 );
+    for ( c = globalUtilOptind; c < argc; c++ )
+        Vec_IntPush( vCut, atoi(argv[c]) );    
+    pNew = Gia_ManDupWindow( pAbc->pGia, vCut );
+    Abc_FrameUpdateGia( pAbc, pNew );
+    Vec_IntFree( vCut );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &window [-vh] <node1> <node2> ... <nodeN>\n" );
+    Abc_Print( -2, "\t          generates a logic window supported by the given nodes\n" );
+    Abc_Print( -2, "\t-v      : toggles printing verbose information [default = %s]\n", fVerbose ? "yes": "no" );
+    Abc_Print( -2, "\t-h      : print the command usage\n");
+    Abc_Print( -2, "\t<nodes> : the list of window inputs\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
 int Abc_CommandAbc9Test( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Gia_ManPrintArray( Gia_Man_t * p );
@@ -52950,7 +53364,7 @@ int Abc_CommandAbc9Test( Abc_Frame_t * pAbc, int argc, char ** argv )
         Gia_ManStop( pTemp );
         return 0;
     }
-    Abc_FrameUpdateGia( pAbc, Gia_ManPerformNewResub(pAbc->pGia, 100, 6, 1, 1) );
+    //Abc_FrameUpdateGia( pAbc, pNew );
 //    printf( "AIG in \"%s\" has the sum of output support sizes equal to %d.\n", pAbc->pGia->pSpec, Gia_ManSumTotalOfSupportSizes(pAbc->pGia) );
     return 0;
 usage:
