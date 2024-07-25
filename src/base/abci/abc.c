@@ -609,7 +609,9 @@ static int Abc_CommandAbc9StrEco             ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandAbc9GenCex             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Odc                ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9GenRel             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9GenMux             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Window             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9FunAbs             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
 static int Abc_CommandAbc9Test               ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
@@ -1401,9 +1403,11 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "ABC9",         "&gencex",       Abc_CommandAbc9GenCex,                 0 );    
     Cmd_CommandAdd( pAbc, "ABC9",         "&odc",          Abc_CommandAbc9Odc,                    0 );    
     Cmd_CommandAdd( pAbc, "ABC9",         "&genrel",       Abc_CommandAbc9GenRel,                 0 );    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&genmux",       Abc_CommandAbc9GenMux,                 0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&window",       Abc_CommandAbc9Window,                 0 );    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&funabs",       Abc_CommandAbc9FunAbs,                 0 );    
     
-    Cmd_CommandAdd( pAbc, "ABC9",         "&test",         Abc_CommandAbc9Test,         0 );
+    Cmd_CommandAdd( pAbc, "ABC9",         "&test",         Abc_CommandAbc9Test,                   0 );
     {
 //        extern Mf_ManTruthCount();
 //        Mf_ManTruthCount();
@@ -10392,7 +10396,10 @@ usage:
     Abc_Print( -2, "\tfile1    : (optional) the file with the first network\n");
     Abc_Print( -2, "\tfile2    : (optional) the file with the second network\n");
     Abc_Print( -2, "\t           if no files are given, uses the current network and its spec\n");
-    Abc_Print( -2, "\t           if one file is given, uses the current network and the file\n");
+    Abc_Print( -2, "\t           if one file is given, uses the current network and the file\n\n");
+    Abc_Print( -2, "\t           Please note that, when used without \"-n\", this command tries to match\n" );
+    Abc_Print( -2, "\t           primary inputs by name and, to achieve this, it will order them alphabetically,\n" );
+    Abc_Print( -2, "\t           which results in incorrect QBF miters and confusing counter-examples.\n" );
     return 1;
 }
 
@@ -11568,6 +11575,11 @@ int Abc_CommandSop( Abc_Frame_t * pAbc, int argc, char ** argv )
     {
         Abc_Print( -1, "Converting to SOP is possible only for logic networks.\n" );
         return 1;
+    }
+    if ( fCubeSort && Abc_NtkHasSop(pNtk) )
+    {
+        Abc_NtkSortSops(pNtk);
+        return 0;
     }
     if ( !fCubeSort && Abc_NtkHasBdd(pNtk) && !Abc_NtkBddToSop(pNtk, -1, ABC_INFINITY, 0) )
     {
@@ -17188,6 +17200,36 @@ usage:
     Abc_Print( -2, "\t-d     : toggle dumping QDIMACS file instead of solving [default = %s]\n", fDumpCnf? "yes": "no" );
     Abc_Print( -2, "\t-v     : toggle verbose output [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h     : print the command usage\n");
+    Abc_Print( -2, "\t\n" );
+    Abc_Print( -2, "\t         Consider specification of the two-input XOR and its implementation in the form of a 4:1 MUX:\n\n" );
+    Abc_Print( -2, "\t         > # file s.blif\n" );
+    Abc_Print( -2, "\t         > .model xor2\n" );
+    Abc_Print( -2, "\t         > .inputs d0 d1 d2 d3 a b\n" );
+    Abc_Print( -2, "\t         > .outputs F\n" );
+    Abc_Print( -2, "\t         > .names a b F\n" );
+    Abc_Print( -2, "\t         > 01 1\n" );
+    Abc_Print( -2, "\t         > 10 1\n" );
+    Abc_Print( -2, "\t         > .end\n\n" );
+    Abc_Print( -2, "\t         > # file i.blif\n" );
+    Abc_Print( -2, "\t         > .model mux21\n" );
+    Abc_Print( -2, "\t         > .inputs d0 d1 d2 d3 a b\n" );
+    Abc_Print( -2, "\t         > .outputs F\n" );
+    Abc_Print( -2, "\t         > .names d0 d1 d2 d3 a b F\n" );
+    Abc_Print( -2, "\t         > 1---00 1\n" );
+    Abc_Print( -2, "\t         > -1--10 1\n" );
+    Abc_Print( -2, "\t         > --1-01 1\n" );
+    Abc_Print( -2, "\t         > ---111 1\n" );
+    Abc_Print( -2, "\t         > .end\n\n" );
+    Abc_Print( -2, "\t         The following run shows how to assign data inputs to the MUX (the first 4 inputs of the miter) to get the XOR:\n\n" );
+    Abc_Print( -2, "\t         > abc 51> miter -n i.blif s.blif; st -i; ps\n" );
+    Abc_Print( -2, "\t         > i_s_miter: i/o =    6/    1  lat =    0  and =     15  lev =  6\n\n" );
+    Abc_Print( -2, "\t         > abc 53> qbf -P 4\n" );
+    Abc_Print( -2, "\t         > Parameters: 0110  Statistics: 0=2 1=2\n" );
+    Abc_Print( -2, "\t         > Solved after 1 iterations.  Total runtime =     0.00 sec\n\n" );
+    Abc_Print( -2, "\t         > abc 53> &get; &qbf -P 4\n" );
+    Abc_Print( -2, "\t         > Parameters: 0110  Statistics: 0=2 1=2\n" );
+    Abc_Print( -2, "\t         > The problem is SAT after 2 iterations.  Time =     0.00 sec\n\n" );
+    Abc_Print( -2, "\t         What we synthesized is the truth table of the XOR gate!\n" );
     return 1;
 }
 
@@ -48254,7 +48296,38 @@ usage:
     Abc_Print( -2, "\t-e     : toggle dumping QDIMACS file instead of solving (original QBF) [default = %s]\n", fDumpCnf2? "yes": "no" );
     Abc_Print( -2, "\t-g     : toggle using Glucose 3.0 by Gilles Audemard and Laurent Simon [default = %s]\n", fGlucose? "yes": "no" );
     Abc_Print( -2, "\t-v     : toggle verbose output [default = %s]\n", fVerbose? "yes": "no" );
-    Abc_Print( -2, "\t-h     : print the command usage\n");
+    Abc_Print( -2, "\t-h     : print the command usage\n\n");
+    Abc_Print( -2, "\t         As an example of using this command, consider specification (the three-input AND-gate) and implementation\n"); 
+    Abc_Print( -2, "\t         (the circuit with function AND(XOR(x0, x1), x2)).  The problem is to check whether the output of the XOR (node n)\n"); 
+    Abc_Print( -2, "\t         can be implemented differently, so that these two circuits are equivalent.  Obviously this can be done!\n");
+    Abc_Print( -2, "\t         Simply replace XOR gate by AND gate.\n\n");
+    Abc_Print( -2, "\t         > # file s2.blif\n");
+    Abc_Print( -2, "\t         > .model and3\n");
+    Abc_Print( -2, "\t         > .inputs x0 x1 x2 n\n");
+    Abc_Print( -2, "\t         > .outputs F\n");
+    Abc_Print( -2, "\t         > .names m x2 F\n");
+    Abc_Print( -2, "\t         > 11 1\n");
+    Abc_Print( -2, "\t         > .names x0 x1 m\n");
+    Abc_Print( -2, "\t         > 11 1\n");
+    Abc_Print( -2, "\t         > .end\n\n");
+    Abc_Print( -2, "\t         > # file i2.blif\n");
+    Abc_Print( -2, "\t         > .model impl\n");
+    Abc_Print( -2, "\t         > .inputs x0 x1 x2 n\n");
+    Abc_Print( -2, "\t         > .outputs F\n");
+    Abc_Print( -2, "\t         > .names n x2 F\n");
+    Abc_Print( -2, "\t         > 11 1\n");
+    Abc_Print( -2, "\t         > #.names x0 x1 n\n");
+    Abc_Print( -2, "\t         > #01 1\n");
+    Abc_Print( -2, "\t         > #10 1\n");
+    Abc_Print( -2, "\t         > .end\n\n");
+    Abc_Print( -2, "\t         > abc 08> miter -n i2.blif s2.blif; ps\n");
+    Abc_Print( -2, "\t         > impl_and3_miter               : i/o =    4/    1  lat =    0  and =      6  lev =  4\n");
+    Abc_Print( -2, "\t         > abc 09> &get; &qbf -P 3\n");
+    Abc_Print( -2, "\t         > The problem is UNSAT after 1 iterations.  Time =     0.00 sec\n\n");
+    Abc_Print( -2, "\t         UNSAT here means that the ECO solution with the given rectification point *has* a solution.\n\n");
+    Abc_Print( -2, "\t         For more info, refer to Figure 1 in the following paper A. Q. Dao, N.-Z. Lee, L.-C. Chen, M. P.-H. Lin,\n");
+    Abc_Print( -2, "\t         J.-H. R. Jiang, A. Mishchenko, and R. Brayton, \"Efficient computation of ECO patch functions\", Proc. DAC'18.\n");
+    Abc_Print( -2, "\t         https://people.eecs.berkeley.edu/~alanmi/publications/2018/dac18_eco.pdf\n");
     return 1;
 }
 
@@ -53217,6 +53290,119 @@ usage:
     return 1;
 }
 
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandAbc9GenMux( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Gia_ManGenMux( int nIns, char * pNums );
+    Gia_Man_t * pTemp = NULL;
+    int c, nIns = 0, fVerbose = 0;
+    char * pNums = NULL;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Kvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'K':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-K\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nIns = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nIns < 0 )
+                goto usage;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( argc == globalUtilOptind && nIns > 0 ) 
+    {
+        if ( nIns == 2 )
+           pNums = "11";
+        else if ( nIns == 3 )
+           pNums = "111";
+        else if ( nIns == 4 )
+           pNums = "112";
+        else if ( nIns == 5 )
+           pNums = "113";
+        else if ( nIns == 6 )
+           pNums = "123";
+        else if ( nIns == 7 )
+           pNums = "1123";
+        else if ( nIns == 8 )
+           pNums = "1124";
+        else if ( nIns == 9 )
+           pNums = "1134";
+        else if ( nIns == 10 )
+           pNums = "1135";
+        else if ( nIns == 11 )
+           pNums = "1235";
+        else if ( nIns == 12 )
+           pNums = "1245";
+        else if ( nIns == 13 )
+           pNums = "1246";
+        else if ( nIns == 14 )
+           pNums = "1247";
+        else if ( nIns == 15 )
+           pNums = "1248";
+        else if ( nIns == 16 )
+           pNums = "1348";
+        else
+        {
+            Abc_Print( -1, "Abc_CommandAbc9GenMux(): The number of controls should not be in the range: 2 <= n <= 16.\n" );
+            return 0;            
+        }
+    }
+    else if ( argc == globalUtilOptind+1 ) 
+    {
+        int nIns2 = 0;
+        pNums = argv[globalUtilOptind];
+        for ( c = 0; pNums[c]; c++ )
+            nIns2 += (int)(pNums[c] - '0');
+        if ( nIns > 0 && nIns2 > 0 && nIns != nIns2 ) 
+        {
+            Abc_Print( -1, "Abc_CommandAbc9GenMux(): The number of inputs does not match.\n" );
+            return 0;
+        }
+        nIns = nIns2;
+    }
+    else
+    {
+        Abc_Print( -1, "Abc_CommandAbc9GenMux(): The number of controls or the control input groups should be given on the command line.\n" );
+        return 0;
+    }
+    pTemp = Gia_ManGenMux( nIns, pNums );
+    Abc_FrameUpdateGia( pAbc, pTemp );    
+    Abc_Print( 1, "Generated a %d:1 MUX with the following groups: %s\n", 1<<nIns, pNums );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &genmux [-K <num>] [-vh] <string>\n" );
+    Abc_Print( -2, "\t         generates the multiplexer\n" );
+    Abc_Print( -2, "\t-K num : the number of control inputs [default = undefined]\n" );
+    Abc_Print( -2, "\t-v     : toggles printing verbose information [default = %s]\n", fVerbose ? "yes": "no" );
+    Abc_Print( -2, "\t-h     : print the command usage\n");
+    Abc_Print( -2, "\tstring : the sizes of control input groups\n");
+    return 1;
+}
+
 
 /**Function*************************************************************
 
@@ -53283,6 +53469,116 @@ usage:
     Abc_Print( -2, "\t<nodes> : the list of window inputs\n");
     return 1;
 }
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandAbc9FunAbs( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern Gia_Man_t * Gia_ManDupEncode( Gia_Man_t * p, Vec_Int_t * vVarNums, int fVerbose );
+    extern Vec_Int_t * Gia_ManCofClassPattern( Gia_Man_t * p, Vec_Int_t * vVarNums, int fVerbose );
+    extern void        Gia_ManCofClassRand( Gia_Man_t * p, int nVars, int nRands );
+    Gia_Man_t * pNew = NULL;
+    Vec_Int_t * vVars = NULL;
+    int c, nVars = 6, nRands = 0, fPrint = 0, fVerbose = 0;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "KRpvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'K':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-K\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nVars = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nVars < 0 )
+                goto usage;
+            break;
+        case 'R':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-R\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nRands = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nRands < 0 )
+                goto usage;
+            break;
+        case 'p':
+            fPrint ^= 1;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9FunAbs(): There is no AIG.\n" );
+        return 0;
+    }
+    if ( Gia_ManPoNum(pAbc->pGia) != 1 || Gia_ManRegNum(pAbc->pGia) != 0 ) {
+        Abc_Print( -1, "Abc_CommandAbc9FunAbs(): Works only for comb AIGs with one output.\n" );
+        return 0;
+    }
+    if ( nVars >= Gia_ManPiNum(pAbc->pGia) ) {
+        Abc_Print( -1, "Abc_CommandAbc9FunAbs(): The number of variables (%d) should be less the PI count (%d).\n", nVars, Gia_ManPiNum(pAbc->pGia) );
+        return 0;        
+    }
+    if ( nRands ) {
+        Gia_ManCofClassRand( pAbc->pGia, nVars, nRands );
+        return 0;
+    }
+    if ( argc == globalUtilOptind ) {
+        vVars = Vec_IntStartNatural( nVars );
+        printf( "Abstracting the first %d variables of the AIG.\n", nVars );
+    }
+    else {
+        vVars = Vec_IntAlloc( argc );
+        for ( c = globalUtilOptind; c < argc; c++ )
+            Vec_IntPush( vVars, atoi(argv[c]) );
+        printf( "Abstracting variables: " );
+        Vec_IntPrint( vVars );
+    }
+    if ( fPrint ) {
+        Vec_Int_t * vTemp = Gia_ManCofClassPattern( pAbc->pGia, vVars, 1 );
+        Vec_IntFree( vTemp );
+    } 
+    else {
+        pNew = Gia_ManDupEncode( pAbc->pGia, vVars, fVerbose );
+        Abc_FrameUpdateGia( pAbc, pNew );
+    }    
+    Vec_IntFree( vVars );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &funabs [-KR num] [-pvh] <node1> <node2> ... <nodeN>\n" );
+    Abc_Print( -2, "\t          generates an abstraction of the function\n" );
+    Abc_Print( -2, "\t-K num  : the number of primary inputs [default = %d]\n", nVars );
+    Abc_Print( -2, "\t-R num  : the number of random K-set to try [default = %d]\n", nRands );
+    Abc_Print( -2, "\t-p      : toggles printing statistics only [default = %s]\n", fPrint ? "yes": "no" );
+    Abc_Print( -2, "\t-v      : toggles printing verbose information [default = %s]\n", fVerbose ? "yes": "no" );
+    Abc_Print( -2, "\t-h      : print the command usage\n");
+    Abc_Print( -2, "\t<nodes> : the index list of primary inputs to be abstrated\n");
+    return 1;
+}
+
 
 /**Function*************************************************************
 
