@@ -24,6 +24,8 @@
 #include "sat/glucose/AbcGlucose.h"
 #include "aig/miniaig/miniaig.h"
 #include "base/io/ioResub.h"
+#include "base/main/main.h"
+#include "base/cmd/cmd.h"
 
 ABC_NAMESPACE_IMPL_START
 
@@ -1045,6 +1047,23 @@ static int Exa3_ManMarkup( Exa3_Man_t * p )
     // assign connectivity variables
     for ( i = p->nVars; i < p->nObjs; i++ )
     {
+        if ( p->pPars->fLutCascade )
+        {
+            if ( i > p->nVars ) 
+            {
+                Vec_WecPush( p->vOutLits, i-1, Abc_Var2Lit(p->iVar, 0) );
+                p->VarMarks[i][0][i-1] = p->iVar++;
+            }
+            for ( k = (int)(i > p->nVars); k < p->nLutSize; k++ )
+            {
+                for ( j = 0; j < p->nVars - k + (int)(i > p->nVars); j++ )
+                {
+                    Vec_WecPush( p->vOutLits, j, Abc_Var2Lit(p->iVar, 0) );
+                    p->VarMarks[i][k][j] = p->iVar++;
+                }
+            }
+            continue;
+        }        
         for ( k = 0; k < p->nLutSize; k++ )
         {
             if ( p->pPars->fFewerVars && i == p->nObjs - 1 && k == 0 )
@@ -1207,6 +1226,61 @@ static void Exa3_ManPrintSolution( Exa3_Man_t * p, int fCompl )
         }
         printf( " )\n" );
     }
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+static void Exa3_ManDumpBlif( Exa3_Man_t * p, int fCompl )
+{
+    int i, k, b, iVar;
+    char pFileName[1000];
+    sprintf( pFileName, "%s.blif", p->pPars->pTtStr );
+    FILE * pFile = fopen( pFileName, "wb" );
+    if ( pFile == NULL ) return;
+    fprintf( pFile, "# Realization of given %d-input function using %d %d-input LUTs synthesized by ABC on %s\n", p->nVars, p->nNodes, p->nLutSize, Extra_TimeStamp() );
+    fprintf( pFile, ".model %s\n", p->pPars->pTtStr );
+    fprintf( pFile, ".inputs" );
+    for ( k = 0; k < p->nVars; k++ )
+        fprintf( pFile, " %c", 'a'+k );
+    fprintf( pFile, "\n.outputs F\n" );    
+    for ( i = p->nObjs - 1; i >= p->nVars; i-- )
+    {
+        fprintf( pFile, ".names" );
+        for ( k = 0; k < p->nLutSize; k++ )
+        {
+            iVar = Exa3_ManFindFanin( p, i, k );
+            if ( iVar >= 0 && iVar < p->nVars )
+                fprintf( pFile, " %c", 'a'+iVar );
+            else
+                fprintf( pFile, " %02d", iVar );
+        }
+        if ( i == p->nObjs - 1 )
+            fprintf( pFile, " F\n" );
+        else 
+            fprintf( pFile, " %02d\n", i );
+        int iVarStart = 1 + p->LutMask*(i - p->nVars);
+        for ( k = 0; k < p->LutMask; k++ )
+        {
+            int Val = bmcg_sat_solver_read_cex_varvalue(p->pSat, iVarStart+k); 
+            if ( Val == 0 )
+                continue;
+            for ( b = 0; b < p->nLutSize; b++ )
+                fprintf( pFile, "%d", ((k+1) >> b) & 1 );
+            fprintf( pFile, " %d\n", i != p->nObjs - 1 || !fCompl );
+        }
+    }
+    fprintf( pFile, ".end\n\n" );
+    fclose( pFile );
+    printf( "Finished dumping the resulting LUT network into file \"%s\".\n", pFileName );
 }
 
 
@@ -1464,8 +1538,10 @@ void Exa3_ManExactSynthesis( Bmc_EsPar_t * pPars )
     else 
         printf( "The problem has no solution.\n" );
     printf( "Added = %d.  Tried = %d.  ", p->nUsed[1], p->nUsed[0] );
-    Exa3_ManFree( p );
     Abc_PrintTime( 1, "Total runtime", Abc_Clock() - clkTotal );
+    if ( iMint == -1 )
+        Exa3_ManDumpBlif( p, fCompl );
+    Exa3_ManFree( p );
 }
 
 /**Function*************************************************************
@@ -3914,6 +3990,62 @@ void Exa_ManExactSynthesis7( Bmc_EsPar_t * pPars, int GateSize )
         Exa_ManDumpVerilog( vValues, pPars->nVars, pPars->nNodes, GateSize, pTruth );
     Vec_IntFreeP( &vValues );
     Abc_PrintTime( 1, "Total runtime", Abc_Clock() - clkTotal );
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Exa_NpnCascadeTest()
+{
+    char Buffer[100];
+    char Command[1000]; int i;
+    FILE * pFile = fopen( "npn3.txt", "r" );
+    for ( i = 0; i < 14; i++ )
+//    FILE * pFile = fopen( "npn4.txt", "r" );
+//    for ( i = 0; i < 222; i++ )
+//    FILE * pFile = fopen( "npn5.txt", "r" );
+//    for ( i = 0; i < 616126; i++ )
+    {
+        int Value = fscanf( pFile, "%s", Buffer );
+        assert( Value == 1 );
+        if ( i == 0 ) continue;
+        if ( Buffer[strlen(Buffer)-1] == '\n' )
+            Buffer[strlen(Buffer)-1] = '\0';
+        if ( Buffer[strlen(Buffer)-1] == '\r' )
+            Buffer[strlen(Buffer)-1] = '\0';
+        sprintf( Command, "lutexact -I 3 -N 2 -K 2 -gvc %s", Buffer+2 );
+        printf( "\nNPN class %6d : Command \"%s\":\n", i, Command );
+        if ( Cmd_CommandExecute( Abc_FrameGetGlobalFrame(), Command ) )
+        {
+            fprintf( stdout, "Cannot execute command \"%s\".\n", Command );
+            return;
+        }
+    }
+    fclose( pFile );
+}
+void Exa_NpnCascadeTest6()
+{
+    char Command[1000]; int i;
+    Abc_Random(1);
+    for ( i = 0; i < 10000; i++ ) 
+    {
+        word Truth = Abc_RandomW(0);        
+        sprintf( Command, "lutexact -I 6 -N 2 -K 5 -gvc %016lx", Truth );
+        printf( "\nIter %4d : Command \"%s\":\n", i, Command );
+        if ( Cmd_CommandExecute( Abc_FrameGetGlobalFrame(), Command ) )
+        {
+            fprintf( stdout, "Cannot execute command \"%s\".\n", Command );
+            return;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////
