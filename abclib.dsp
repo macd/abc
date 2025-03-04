@@ -691,6 +691,10 @@ SOURCE=.\src\base\io\ioWriteGml.c
 # End Source File
 # Begin Source File
 
+SOURCE=.\src\base\io\ioWriteHMetis.c
+# End Source File
+# Begin Source File
+
 SOURCE=.\src\base\io\ioWriteList.c
 # End Source File
 # Begin Source File
@@ -2576,6 +2580,54 @@ SOURCE=.\src\opt\fxu\fxuSingle.c
 # Begin Source File
 
 SOURCE=.\src\opt\fxu\fxuUpdate.c
+# End Source File
+# End Group
+# Begin Group "rar"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_map.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_miaig.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_rar.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_rng.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_time.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_tt.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_vec.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_map.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_miaig.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_rar.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\opt\rar\rewire_rng.c
 # End Source File
 # End Group
 # Begin Group "rwr"
@@ -5208,6 +5260,10 @@ SOURCE=.\src\aig\gia\giaRetime.c
 # Begin Source File
 
 SOURCE=.\src\aig\gia\giaRex.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\aig\gia\giaRrr.cpp
 # End Source File
 # Begin Source File
 

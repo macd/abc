@@ -1436,6 +1436,7 @@ extern void                Gia_ManEquivFixOutputPairs( Gia_Man_t * p );
 extern int                 Gia_ManCheckTopoOrder( Gia_Man_t * p );
 extern int *               Gia_ManDeriveNexts( Gia_Man_t * p );
 extern void                Gia_ManDeriveReprs( Gia_Man_t * p );
+extern void                Gia_ManDeriveReprsFromSibls( Gia_Man_t *p );
 extern int                 Gia_ManEquivCountLits( Gia_Man_t * p );
 extern int                 Gia_ManEquivCountLitsAll( Gia_Man_t * p );
 extern int                 Gia_ManEquivCountClasses( Gia_Man_t * p );
@@ -1805,6 +1806,9 @@ extern Gia_Man_t *         Gia_ManTtoptCare( Gia_Man_t * p, int nIns, int nOuts,
 /*=== giaTransduction.cpp ===========================================================*/
 extern Gia_Man_t *         Gia_ManTransductionBdd( Gia_Man_t * pGia, int nType, int fMspf, int nRandom, int nSortType, int nPiShuffle, int nParameter, int fLevel, Gia_Man_t * pExdc, int fNewLine, int nVerbose );
 extern Gia_Man_t *         Gia_ManTransductionTt( Gia_Man_t * pGia, int nType, int fMspf, int nRandom, int nSortType, int nPiShuffle, int nParameter, int fLevel, Gia_Man_t * pExdc, int fNewLine, int nVerbose );
+
+/*=== giaRrr.cpp ===========================================================*/
+extern Gia_Man_t *         Gia_ManRrr( Gia_Man_t *pGia, int iSeed, int nWords, int nTimeout, int nSchedulerVerbose, int nOptimizerVerbose, int nAnalyzerVerbose, int nSimulatorVerbose, int nSatSolverVerbose, int fUseBddCspf, int fUseBddMspf, int nConflictLimit, int nSortType, int nOptimizerFlow, int nSchedulerFlow );
 
 /*=== giaCTas.c ===========================================================*/
 typedef struct Tas_Man_t_  Tas_Man_t;
