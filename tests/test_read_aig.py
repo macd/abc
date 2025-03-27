@@ -21,3 +21,22 @@ def test_read_pipe():
 def test_read_sin():
     status, msg = abc_cmd(f"read_aiger {AIGDIR}/sin.aig")
     assert status == 0
+
+# Now test &read
+#
+def test_read_c1355_():
+    status, msg = abc_cmd(f"&read {AIGDIR}/c1355.aig")
+    assert status == 0
+
+def test_read_c2670_():
+    status, msg = abc_cmd(f"&read {AIGDIR}/c2670.aig")
+    assert status == 0
+
+def test_read_pipe_():
+    status, msg = abc_cmd(f"&read {AIGDIR}/pipe_mult.aig")
+    assert status == 0
+
+def test_read_sin_():
+    status, msg = abc_cmd(f"&read {AIGDIR}/sin.aig")
+    assert status == 0
+    

@@ -16,7 +16,11 @@ DIR=${VAR%/*}
 gcc -fPIC -I$DIR -I../src ABC_wrap.c -c
 g++ -shared -fPIC -o _ABC.so `find .. -name \*.o`
 cd ..
-pip install -e ABC-python
+
+#pip install -e ABC-python
+
+# I'm now using uv
+uv pip install -e ABC-python
 
 # now make the executable abc with readline and assert enabled.
 make clean
