@@ -341,6 +341,7 @@ static int Abc_CommandClockGate              ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandExtWin                 ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandInsWin                 ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandSymFun                 ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandATMap                  ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandPermute                ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandUnpermute              ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandCubeEnum               ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -1149,6 +1150,7 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "Sequential",   "extwin",        Abc_CommandExtWin,           1 );
     Cmd_CommandAdd( pAbc, "Sequential",   "inswin",        Abc_CommandInsWin,           1 );
     Cmd_CommandAdd( pAbc, "Sequential",   "symfun",        Abc_CommandSymFun,           0 );
+    Cmd_CommandAdd( pAbc, "Sequential",   "atmap",         Abc_CommandATMap,            0 );
     Cmd_CommandAdd( pAbc, "Sequential",   "permute",       Abc_CommandPermute,          1 );
     Cmd_CommandAdd( pAbc, "Sequential",   "unpermute",     Abc_CommandUnpermute,        1 );
     Cmd_CommandAdd( pAbc, "Sequential",   "cubeenum",      Abc_CommandCubeEnum,         0 );
@@ -25966,9 +25968,9 @@ int Abc_CommandSymFun( Abc_Frame_t * pAbc, int argc, char ** argv )
     extern void Ntk_SymFunGenerate( int nVars, int fVerbose );
     word * pFun = NULL;
     char * pStr,  * pTruth, * pCommand;
-    int c, k, nVars = -1, fVerbose = 0;
+    int c, k, nVars = -1, fCounter = 0, fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "Nvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Ncvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -25981,6 +25983,9 @@ int Abc_CommandSymFun( Abc_Frame_t * pAbc, int argc, char ** argv )
             nVars = atoi(argv[globalUtilOptind]);
             globalUtilOptind++;
             break;
+        case 'c':
+            fCounter ^= 1;
+            break;
         case 'v':
             fVerbose ^= 1;
             break;
@@ -25990,6 +25995,21 @@ int Abc_CommandSymFun( Abc_Frame_t * pAbc, int argc, char ** argv )
             Abc_Print( -2, "Unknown switch.\n");
             goto usage;
         }
+    }
+    if ( fCounter )
+    {
+        if ( nVars == -1 )
+        {
+            printf( "The number of variables should be specified on the command line using \"-N <num>\".\n" );
+            return 1;
+        }
+        extern Vec_Ptr_t * Abc_SopGenerateCounters( int nVars );
+        Vec_Ptr_t * vSops = Abc_SopGenerateCounters( nVars );
+        Abc_Ntk_t * pNtk = Abc_NtkCreateWithNodes( vSops );
+        Vec_PtrFreeFree( vSops );
+        Abc_FrameReplaceCurrentNetwork( pAbc, pNtk );
+        Abc_FrameClearVerifStatus( pAbc );
+        return 0;
     }
     if ( nVars != -1 )
     {
@@ -26040,17 +26060,92 @@ int Abc_CommandSymFun( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: symfun [-N num] [-vh] <ones>\n" );
+    Abc_Print( -2, "usage: symfun [-N num] [-cvh] <ones>\n" );
     Abc_Print( -2, "\t           generated a single-output symmetric function\n" );
     Abc_Print( -2, "\t-N <num> : prints truth tables of all N-var symmetric functions [default = not used]\n" );
+    Abc_Print( -2, "\t-c       : toggle generating a counter [default = %s]\n", fCounter? "yes": "no" );
     Abc_Print( -2, "\t-v       : toggle verbose output [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h       : print the command usage\n");
     Abc_Print( -2, "\t<ones>   : the string of N+1 zeros and ones, where N is the number of variables\n" );
     Abc_Print( -2, "\t           For example, to get 3-input NAND-gate, use \"symfun 1000\".\n" );
     Abc_Print( -2, "\t           To get 5-input majority gate, use \"symfun 000111\".\n" );
-
     return 1;
 }
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandATMap( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern void Abc_NtkATMap( int nXVars, int nYVars, char ** pGPC, int nGPCs, int fVerbose );
+    int c, nXVars = -1, nYVars = -1, fVerbose = 0;
+    char * pGPCs0[1] = { (char*)"3:11:1" };
+    char ** pGPCs = NULL; int nGPCs = 0;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "XYvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'X':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-X\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            nXVars = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            break;
+        case 'Y':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-Y\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            nYVars = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            break;
+        case 'v':
+            fVerbose ^= 1;
+            break;
+        case 'h':
+            goto usage;
+        default:
+            Abc_Print( -2, "Unknown switch.\n");
+            goto usage;
+        }
+    }
+    pGPCs = argv + globalUtilOptind;
+    nGPCs = argc - globalUtilOptind;
+    if ( nGPCs == 0 )
+    {
+        printf( "GPCs are not listed on the command line. The simplest GPC (full adder) will be used.\n" );
+        pGPCs = pGPCs0;
+        nGPCs = 1;
+    }
+    Abc_NtkATMap( nXVars, nYVars, pGPCs, nGPCs, fVerbose );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: atmap [-XY num] [-G str] [-v] <GPC(0)> <GPC(1)> ... <GPC(N-1)>\n" );
+    Abc_Print( -2, "\t           maps rectangular adder tree using GPCs\n" );
+    Abc_Print( -2, "\t-X <num> : the number of different ranks [default = %d]\n", nXVars );
+    Abc_Print( -2, "\t-Y <num> : the number of bits of each rank [default = %d]\n", nYVars );
+    Abc_Print( -2, "\t-v       : toggle verbose output [default = %s]\n", fVerbose? "yes": "no" );
+    Abc_Print( -2, "\t-h       : print the command usage\n\n");
+    Abc_Print( -2, "\t           For example, to map an adder tree with dimensions 4 x 648 using GPC(6,6,6,6:1,2,2,2,2,1)\n" );
+    Abc_Print( -2, "\t           having LUT efficiency E = 1.75, use the command line \"atmap -X 4 -Y 648 6666:122221:8 3:11:1\"\n" );
+    Abc_Print( -2, "\t           where 8 is the number of 6-LUTs needed to implement the GPC and E = (24-10)/8 = 1.75.\n" );
+    return 1;
+}
+
 /**Function*************************************************************
 
   Synopsis    []
@@ -26067,7 +26162,7 @@ int Abc_CommandPermute( Abc_Frame_t * pAbc, int argc, char ** argv )
     extern Abc_Ntk_t * Abc_NtkRestrashRandom( Abc_Ntk_t * pNtk );
     extern void Abc_NtkPermutePiUsingFanout( Abc_Ntk_t * pNtk );
     Abc_Ntk_t * pNtk = pAbc->pNtkCur, * pNtkRes = NULL;
-    char * pFlopPermFile = NULL;
+    char * pFlopPermFile = NULL, * pInPermFile = NULL, * pOutPermFile = NULL;
     int fInputs = 1;
     int fOutputs = 1;
     int fFlops = 1;
@@ -26076,7 +26171,7 @@ int Abc_CommandPermute( Abc_Frame_t * pAbc, int argc, char ** argv )
     int Seed = -1;
     int c;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "SFiofnxh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "SIOFiofnxh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -26090,6 +26185,24 @@ int Abc_CommandPermute( Abc_Frame_t * pAbc, int argc, char ** argv )
             globalUtilOptind++;
             if ( Seed < 0 )
                 goto usage;
+            break;
+        case 'I':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-I\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            pInPermFile = argv[globalUtilOptind];
+            globalUtilOptind++;
+            break;
+        case 'O':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-O\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            pOutPermFile = argv[globalUtilOptind];
+            globalUtilOptind++;
             break;
         case 'F':
             if ( globalUtilOptind >= argc )
@@ -26153,12 +26266,12 @@ int Abc_CommandPermute( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Command \"permute\" has failed.\n" );
         return 1;
     }
-    Abc_NtkPermute( pNtkRes, fInputs, fOutputs, fFlops, pFlopPermFile );
+    Abc_NtkPermute( pNtkRes, fInputs, fOutputs, fFlops, pInPermFile, pOutPermFile, pFlopPermFile );
     Abc_FrameReplaceCurrentNetwork( pAbc, pNtkRes );
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: permute [-S num] [-iofnxh] [-F filename]\n" );
+    Abc_Print( -2, "usage: permute [-S num] [-iofnxh] [-I filename] [-O filename] [-F filename]\n" );
     Abc_Print( -2, "\t                performs random permutation of inputs/outputs/flops\n" );
     Abc_Print( -2, "\t-S num        : the random seed to generate permutations (0 <= num < INT_MAX) [default = %d]\n", Seed );
     Abc_Print( -2, "\t-i            : toggle permuting primary inputs [default = %s]\n", fInputs? "yes": "no" );
@@ -26167,6 +26280,8 @@ usage:
     Abc_Print( -2, "\t-n            : toggle deriving new topological ordering of nodes [default = %s]\n", fNodes? "yes": "no" );
     Abc_Print( -2, "\t-x            : toggle permuting inputs based on their fanout count [default = %s]\n", fFanout? "yes": "no" );
     Abc_Print( -2, "\t-h            : print the command usage\n");
+    Abc_Print( -2, "\t-I <filename> : (optional) file with the input permutation\n" );
+    Abc_Print( -2, "\t-O <filename> : (optional) file with the output permutation\n" );
     Abc_Print( -2, "\t-F <filename> : (optional) file with the flop permutation\n" );
     return 1;
 }
@@ -30881,7 +30996,7 @@ int Abc_CommandBm2( Abc_Frame_t * pAbc, int argc, char ** argv )
         return 1;
     }
 
-    Abc_NtkPermute(pNtk2, 1, 1, 0, NULL );
+    Abc_NtkPermute(pNtk2, 1, 1, 0, NULL, NULL, NULL );
     Abc_NtkShortNames(pNtk2);
 
     Abc_NtkForEachCi( pNtk1, pObj, i ) {
