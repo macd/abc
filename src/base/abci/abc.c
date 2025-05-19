@@ -7698,9 +7698,9 @@ usage:
 ***********************************************************************/
 int Abc_CommandRunScript( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
-    int c, nIters = 10, nBeg = 1, nAdd = 1, fVerbose = 0; char * pScript = NULL, * pSpot = NULL;
+    int c, nIters = 10, nBeg = 1, nAdd = 1, fReverse = 0, fVerbose = 0; char * pScript = NULL, * pSpot = NULL;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "IBASvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "IBASrvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -7740,6 +7740,9 @@ int Abc_CommandRunScript( Abc_Frame_t * pAbc, int argc, char ** argv )
             pScript = argv[globalUtilOptind];
             globalUtilOptind++;
             break;
+        case 'r':
+            fReverse ^= 1;
+            break;
         case 'v':
             fVerbose ^= 1;
             break;
@@ -7765,7 +7768,7 @@ int Abc_CommandRunScript( Abc_Frame_t * pAbc, int argc, char ** argv )
     {
         char pCommLine[1000] = {0};
         char pNumber[10] = {0};
-        sprintf( pNumber, "%d", nBeg + c*nAdd );
+        sprintf( pNumber, "%d", fReverse ? nBeg - c*nAdd : nBeg + c*nAdd );
         strcpy( pCommLine, pScript );
         pCommLine[(int)(pSpot - pScript)] = 0;
         strcat( pCommLine, pNumber );
@@ -7781,12 +7784,13 @@ int Abc_CommandRunScript( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: runscript [-IBA num] [-S str] [-vh]\n" );
+    Abc_Print( -2, "usage: runscript [-IBA num] [-S str] [-rvh]\n" );
     Abc_Print( -2, "\t           running the script with different values\n" );
     Abc_Print( -2, "\t-I <num> : the number of iterations [default = %d]\n", nIters );
     Abc_Print( -2, "\t-B <num> : the starting number [default = %d]\n", nBeg );
     Abc_Print( -2, "\t-A <num> : the increment added in each iteration [default = %d]\n", nAdd );
     Abc_Print( -2, "\t-S <str> : the script to iterate [default = none]\n" );
+    Abc_Print( -2, "\t-r       : toggle reversing the order of counting [default = %s]\n", fReverse? "yes": "no" );
     Abc_Print( -2, "\t-v       : toggle printing verbose information [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h       : print the command usage\n");
     return 1;
@@ -9299,7 +9303,7 @@ int Abc_CommandLutCasDec( Abc_Frame_t * pAbc, int argc, char ** argv )
             return 1;
         }
         Abc_NtkLutCascadeFile( pFileName, nVarNum, nLutSize, nStages, nRails, nIters, nJRatio, Seed, fVerbose, fVeryVerbose, fPrintMyu );
-        return 1;
+        return 0;
     }
     if ( fGen )
     {
@@ -46597,14 +46601,14 @@ usage:
 ***********************************************************************/
 int Abc_CommandAbc9Rewire( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
-    extern Gia_Man_t *Gia_ManRewire(Gia_Man_t *pGia, Gia_Man_t *pExc, int nIters, float levelGrowRatio, int nExpands, int nGrowth, int nDivs, int nFaninMax, int nTimeOut, int nMode, int nMappedMode, int nDist, int nSeed, int fCheck, int fVerbose);
+    extern Gia_Man_t *Gia_ManRewire(Gia_Man_t *pGia, Gia_Man_t *pExc, int nIters, float levelGrowRatio, int nExpands, int nGrowth, int nDivs, int nFaninMax, int nTimeOut, int nMode, int nMappedMode, int nDist, int nSeed, int fCheck, int fChoices, int fVerbose);
     FILE *pFile = NULL;
     Gia_Man_t *pTemp, *pExc = NULL;
-    int c, nIters = 100000, nExpands = 128, nGrowth = 4, nDivs = -1, nFaninMax = 8, nSeed = 1, nTimeOut = 0, nVerbose = 1, nMode = 0, nMappedMode = 0, nDist = 0, fCheck = 0;
+    int c, nIters = 100000, nExpands = 128, nGrowth = 4, nDivs = -1, nFaninMax = 8, nSeed = 1, nTimeOut = 0, nVerbose = 1, nMode = 0, nMappedMode = 0, nDist = 0, fCheck = 0, fChoices = 0;
     float nLevelGrowRatio = 0;
     Extra_UtilGetoptReset();
 
-    while ( ( c = Extra_UtilGetopt( argc, argv, "IEGDFSTMALRCVch" ) ) != EOF ) {
+    while ( ( c = Extra_UtilGetopt( argc, argv, "IEGDFSTMALRCVcsh" ) ) != EOF ) {
         switch ( c ) {
         case 'I':
             if ( globalUtilOptind >= argc )
@@ -46733,6 +46737,9 @@ int Abc_CommandAbc9Rewire( Abc_Frame_t * pAbc, int argc, char ** argv )
         case 'c':
             fCheck ^= 1;
             break;
+        case 's':
+            fChoices ^= 1;
+            break;
         case 'h':
         default:
             goto usage;
@@ -46754,14 +46761,14 @@ int Abc_CommandAbc9Rewire( Abc_Frame_t * pAbc, int argc, char ** argv )
         return 1;
     }
 
-    pTemp = Gia_ManRewire( pAbc->pGia, pExc, nIters, nLevelGrowRatio, nExpands, nGrowth, nDivs, nFaninMax, nTimeOut, nMode, nMappedMode, nDist, nSeed, fCheck, nVerbose );
+    pTemp = Gia_ManRewire( pAbc->pGia, pExc, nIters, nLevelGrowRatio, nExpands, nGrowth, nDivs, nFaninMax, nTimeOut, nMode, nMappedMode, nDist, nSeed, fCheck, fChoices, nVerbose );
     if ( pExc )
         Gia_ManStop( pExc );
     Abc_FrameUpdateGia( pAbc, pTemp );
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &rewire [-IEGDFLRMASTV <num>]\n" );
+    Abc_Print( -2, "usage: &rewire [-IEGDFLRMASTV <num>] [-csh]\n" );
     Abc_Print( -2, "\t             performs AIG re-wiring\n" );
     Abc_Print( -2, "\t-I <num>  :  the number of iterations [default = %d]\n",                                  nIters );
     Abc_Print( -2, "\t-E <num>  :  the number of fanins to add to all nodes [default = %d]\n",                  nExpands );
@@ -46777,6 +46784,7 @@ usage:
     Abc_Print( -2, "\t-T <num>  :  the timeout in seconds (0: unlimited) [default = %d]\n",                     nTimeOut );
     Abc_Print( -2, "\t-V <num>  :  the verbosity level [default = %d]\n",                                       nVerbose );
     Abc_Print( -2, "\t-c        :  check the equivalence [default = %s]\n", fCheck ? "yes" : "no" );
+    Abc_Print( -2, "\t-s        :  toggle accumulating structural choices [default = %s]\n", fChoices ? "yes" : "no" );
     Abc_Print( -2, "\t-h        :  prints the command usage\n" );
     Abc_Print( -2, "\n\tThis command was contributed by Jiun-Hao Chen from National Taiwan University.\n" );
     return 1;
