@@ -1134,7 +1134,7 @@ Gia_Man_t * Gia_ManDupRandPerm( Gia_Man_t * p )
   SeeAlso     []
 
 ***********************************************************************/
-void Gia_ManDupAppend( Gia_Man_t * pNew, Gia_Man_t * pTwo )
+void Gia_ManDupAppend( Gia_Man_t * pNew, Gia_Man_t * pTwo, int fShareCis )
 {
     Gia_Obj_t * pObj;
     int i;
@@ -1148,7 +1148,7 @@ void Gia_ManDupAppend( Gia_Man_t * pNew, Gia_Man_t * pTwo )
         if ( Gia_ObjIsAnd(pObj) )
             pObj->Value = Gia_ManAppendAnd( pNew, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
         else if ( Gia_ObjIsCi(pObj) )
-            pObj->Value = Gia_ManAppendCi( pNew );
+            pObj->Value = fShareCis ? Gia_ManCiLit(pNew, Gia_ObjCioId(pObj)) : Gia_ManAppendCi( pNew );
         else if ( Gia_ObjIsCo(pObj) )
             pObj->Value = Gia_ManAppendCo( pNew, Gia_ObjFanin0Copy(pObj) );
     }
@@ -6041,7 +6041,7 @@ Vec_Wec_t * Gia_ManCollectIntTfos( Gia_Man_t * p, Vec_Int_t * vVarNums )
 Gia_Man_t * Gia_ManDupCofs( Gia_Man_t * p, Vec_Int_t * vVarNums )
 {
     int i, iLit, nMints = 1 << Vec_IntSize(vVarNums);
-    Vec_Int_t * vOutLits = Vec_IntAlloc( nMints * Gia_ManCoNum(p) );    
+    Vec_Int_t * vOutLits = Vec_IntStartFull( nMints * Gia_ManCoNum(p) );    
     Vec_Wec_t * vTfos = Gia_ManCollectIntTfos( p, vVarNums );
     Gia_Man_t * pNew, * pTemp; Gia_Obj_t * pObj; 
     assert( Gia_ManRegNum(p) == 0 );
@@ -6057,7 +6057,7 @@ Gia_Man_t * Gia_ManDupCofs( Gia_Man_t * p, Vec_Int_t * vVarNums )
     Gia_ManForEachAnd( p, pObj, i )
         pObj->Value = Gia_ManHashAnd( pNew, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
     Gia_ManForEachCo( p, pObj, i )
-        Vec_IntPush( vOutLits, Gia_ObjFanin0Copy(pObj) );
+        Vec_IntWriteEntry( vOutLits, i, Gia_ObjFanin0Copy(pObj) );
     int m, g, x, b = 0;
     for ( m = 1; m < nMints; m++ )
     {
@@ -6067,7 +6067,7 @@ Gia_Man_t * Gia_ManDupCofs( Gia_Man_t * p, Vec_Int_t * vVarNums )
         Gia_ManForEachObjVec( vNode, p, pObj, i )
             pObj->Value = Gia_ManHashAnd( pNew, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
         Gia_ManForEachCo( p, pObj, i )
-            Vec_IntPush( vOutLits, Gia_ObjFanin0Copy(pObj) );
+            Vec_IntWriteEntry( vOutLits, g * Gia_ManCoNum(p) + i, Gia_ObjFanin0Copy(pObj) );
     }
     assert( Vec_IntFindMin(vOutLits) >= 0 );
     Vec_IntForEachEntry( vOutLits, iLit, i )
@@ -6274,6 +6274,40 @@ Gia_Man_t * Gia_ManDupFanouts( Gia_Man_t * p )
 
 /**Function*************************************************************
 
+  Synopsis    []
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_ManDupChoicesMarkTfi_rec( Gia_Man_t * pGia, int iObj )
+{
+    if ( Gia_ObjIsTravIdCurrentId(pGia, iObj) )
+        return;
+    Gia_ObjSetTravIdCurrentId(pGia, iObj);
+    Gia_Obj_t * pObj = Gia_ManObj(pGia, iObj);
+    if ( !Gia_ObjIsAnd(pObj) )
+        return;
+    Gia_ManDupChoicesMarkTfi_rec( pGia, Gia_ObjFaninId0(pObj, iObj) );
+    Gia_ManDupChoicesMarkTfi_rec( pGia, Gia_ObjFaninId1(pObj, iObj) );
+    Gia_Obj_t * pSibl = Gia_ObjSiblObj( pGia, iObj );
+    if ( pSibl ) Gia_ManDupChoicesMarkTfi_rec( pGia, Gia_ObjId(pGia, pSibl) );
+}
+int Gia_ManDupChoicesCheckOverlap( Gia_Man_t * pGia, int iObj, int iFan0, int iFan1 )
+{
+    Gia_ManIncrementTravId( pGia );
+    Gia_ManDupChoicesMarkTfi_rec( pGia, Gia_ObjFaninId0(Gia_ManObj(pGia, iObj), iObj) );
+    Gia_ManDupChoicesMarkTfi_rec( pGia, Gia_ObjFaninId1(Gia_ManObj(pGia, iObj), iObj) );
+    if ( Gia_ObjIsTravIdCurrentId(pGia, iFan0) || Gia_ObjIsTravIdCurrentId(pGia, iFan1) )
+        return 1;
+    return 0;
+}
+
+/**Function*************************************************************
+
   Synopsis    [Reorders choice nodes.]
 
   Description []
@@ -6288,14 +6322,24 @@ void Gia_ManPrintChoices( Gia_Man_t * p )
     Gia_Obj_t * pObj; int i;
     Gia_ManForEachAnd( p, pObj, i )
         if ( p->pSibls[i] )
-            printf( "%d -> %d\n", i, p->pSibls[i] );
+            printf( "%d -> %d    ", i, p->pSibls[i] );
 }
 void Gia_ManReorderChoices_rec( Gia_Man_t * pNew, Gia_Man_t * p, Gia_Obj_t * pObj )
 {
     if ( ~pObj->Value )
         return;
     assert( Gia_ObjIsAnd(pObj) );
-    Gia_Obj_t * pSibl = Gia_ObjSiblObj(p, Gia_ObjId(p, pObj));
+    int ObjId = Gia_ObjId(p, pObj);
+    Gia_Obj_t * pSibl = Gia_ObjSiblObj(p, ObjId);    
+    if ( pSibl ) {
+        int SiblId = Gia_ObjId(p, pSibl);
+        if ( Gia_ManDupChoicesCheckOverlap( p, SiblId, Gia_ObjFaninId0(pObj, ObjId), Gia_ObjFaninId1(pObj, ObjId) ) ) {
+            assert( p->pSibls[ObjId] == SiblId );
+            p->pSibls[ObjId] = p->pSibls[SiblId];
+            Gia_ManReorderChoices_rec( pNew, p, pObj );
+            return;
+        }        
+    }    
     Gia_ManReorderChoices_rec( pNew, p, Gia_ObjFanin0(pObj) );
     Gia_ManReorderChoices_rec( pNew, p, Gia_ObjFanin1(pObj) );
     if ( pSibl ) Gia_ManReorderChoices_rec( pNew, p, pSibl );
