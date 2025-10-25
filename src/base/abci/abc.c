@@ -532,6 +532,7 @@ static int Abc_CommandAbc9Transduction       ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandAbc9TranStoch          ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Rrr                ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Rewire             ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9DecGraph           ( Abc_Frame_t * pAbc, int argc, char ** argv );
 //#endif
 static int Abc_CommandAbc9LNetMap            ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Unmap              ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -1352,6 +1353,7 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "ABC9",         "&transtoch"   , Abc_CommandAbc9TranStoch,    0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&rrr",          Abc_CommandAbc9Rrr,          0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&rewire"      , Abc_CommandAbc9Rewire,       0 );
+    Cmd_CommandAdd( pAbc, "ABC9",         "&dg"          , Abc_CommandAbc9DecGraph,     0 );
 //#endif
     Cmd_CommandAdd( pAbc, "ABC9",         "&lnetmap",      Abc_CommandAbc9LNetMap,      0 );
     Cmd_CommandAdd( pAbc, "ABC9",         "&unmap",        Abc_CommandAbc9Unmap,        0 );
@@ -21838,12 +21840,12 @@ int Abc_CommandIf( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     if ( pPars->fEnableCheck07 )
     {
-        if ( pPars->nLutSize < 6 || pPars->nLutSize > 7 )
+        if ( pPars->nLutSize > 9 )
         {
-            Abc_Print( -1, "This feature only works for {6,7}-LUTs.\n" );
+            Abc_Print( -1, "This feature only works for up to 9-input LUTs.\n" );
             return 1;
         }
-        pPars->pFuncCell = If_CutPerformCheck07;
+        pPars->pFuncCell = If_CutPerformCheckJ;
         pPars->fCutMin = 1;
     }
     if ( pPars->fUseCofVars )
@@ -42939,12 +42941,12 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
     int c;
     // set defaults
     Gia_ManSetIfParsDefault( pPars );
-    if ( pAbc->pLibLut == NULL )
+    if ( Abc_FrameReadLibLut() == NULL )
     {
         Abc_Print( -1, "LUT library is not given. Using default LUT library.\n" );
-        pAbc->pLibLut = If_LibLutSetSimple( 6 );
+        Abc_FrameSetLibLut( If_LibLutSetSimple( 6 ) );
     }
-    pPars->pLutLib = (If_LibLut_t *)pAbc->pLibLut;
+    pPars->pLutLib = (If_LibLut_t *)Abc_FrameReadLibLut();
     Extra_UtilGetoptReset();
     while ( ( c = Extra_UtilGetopt( argc, argv, "KCFAGRDEWSJTXYZqalepmrsdbgxyofuijkztncvwh" ) ) != EOF )
     {
@@ -43178,12 +43180,12 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
             //pPars->fUseCofVars ^= 1;
             pPars->fUseCheck2 ^= 1;
             break;
-//        case 'j':
-//            pPars->fEnableCheck07 ^= 1;
-//            break;
         case 'j':
-            pPars->fUseAndVars ^= 1;
+            pPars->fEnableCheck07 ^= 1;
             break;
+        //case 'j':
+        //    pPars->fUseAndVars ^= 1;
+        //    break;
         case 'k':
             pPars->fUseDsdTune ^= 1;
             break;
@@ -43281,12 +43283,12 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     if ( pPars->fEnableCheck07 )
     {
-        if ( pPars->nLutSize < 6 || pPars->nLutSize > 7 )
+        if ( pPars->nLutSize > 9 )
         {
-            Abc_Print( -1, "This feature only works for {6,7}-LUTs.\n" );
+            Abc_Print( -1, "This feature only works for up to 9-input LUTs.\n" );
             return 1;
         }
-        pPars->pFuncCell = If_CutPerformCheck07;
+        pPars->pFuncCell = If_CutPerformCheckJ;
         pPars->fCutMin = 1;
     }
     if ( pPars->fUseCheck1 || pPars->fUseCheck2 )
@@ -43567,7 +43569,7 @@ usage:
     Abc_Print( -2, "\t-f       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck75? "yes": "no" );
     Abc_Print( -2, "\t-u       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck75u? "yes": "no" );
     Abc_Print( -2, "\t-i       : toggles using cofactoring variables [default = %s]\n", pPars->fUseCofVars? "yes": "no" );
-//    Abc_Print( -2, "\t-j       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck07? "yes": "no" );
+    Abc_Print( -2, "\t-j       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck07? "yes": "no" );
     Abc_Print( -2, "\t-j       : toggles using AND bi-decomposition [default = %s]\n", pPars->fUseAndVars? "yes": "no" );
     Abc_Print( -2, "\t-k       : toggles matching based on precomputed DSD manager [default = %s]\n", pPars->fUseDsdTune? "yes": "no" );
     Abc_Print( -2, "\t-z       : toggles deriving LUTs when mapping into LUT structures [default = %s]\n", pPars->fDeriveLuts? "yes": "no" );
@@ -43619,12 +43621,12 @@ int Abc_CommandAbc9Iff( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Abc_CommandAbc9Iff(): Mapping of the AIG is not defined.\n" );
         return 1;
     }
-    if ( pAbc->pLibLut == NULL )
+    if ( Abc_FrameReadLibLut() == NULL )
     {
         Abc_Print( -1, "Abc_CommandAbc9Iff(): LUT library is not defined.\n" );
         return 1;
     }
-    Gia_ManIffTest( pAbc->pGia, (If_LibLut_t *)pAbc->pLibLut, fVerbose );
+    Gia_ManIffTest( pAbc->pGia, (If_LibLut_t *)Abc_FrameReadLibLut(), fVerbose );
     return 0;
 
 usage:
@@ -46983,6 +46985,80 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
+int Abc_CommandAbc9DecGraph( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    Gia_Man_t * pTemp;
+    char * pFileName = NULL;
+    int c, fFile = 0;
+
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "fh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'f':
+            fFile ^= 1;
+            break;
+        case 'h':
+        default:
+            goto usage;
+        }
+    }
+    if ( argc > globalUtilOptind + 1 )
+    {
+        return 0;
+    }
+    if ( !fFile && argc == globalUtilOptind + 1 ) 
+    {
+        return 0;
+    }
+    if ( !fFile && pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Empty GIA network.\n" );
+        return 1;
+    }
+    if ( fFile && argc == globalUtilOptind + 1 )
+    {
+        FILE * pFile = fopen( argv[globalUtilOptind], "rb" );
+        if ( pFile == NULL )
+        {
+            Abc_Print( -1, "Abc_CommandAbc9BCore(): Cannot open file \"%s\" for reading the simulation information.\n", argv[globalUtilOptind] );
+            return 0;
+        }
+        fclose( pFile );
+        pFileName = argv[globalUtilOptind];
+    }
+    if ( pFileName ) {
+        pTemp = Gia_ManDecGraphFromFile( pFileName );
+    } else {
+        pTemp = Gia_ManDecGraph( pAbc->pGia );
+    }
+    Abc_FrameUpdateGia( pAbc, pTemp );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &dg [-vhf] <file>\n" );
+    Abc_Print( -2, "\t           convert AIG into decision graph structure\n" );
+    Abc_Print( -2, "\t-f       : read from file (in IWLS format) [default = %s]\n" , fFile ? "yes" : "no");
+    Abc_Print( -2, "\t-h       : prints the command usage\n\n");
+    Abc_Print( -2, "\t           This command was contributed by Jiun-Hao Chen from National Taiwan University.\n" );
+    Abc_Print( -2, "\t           For more info, please refer to the paper: Jiun-Hao Chen and Jie-Hong R. Jiang,\n");
+    Abc_Print( -2, "\t           \"Circuit learning for multi-output Boolean functions\", Proc. IWLS 2025.\n");
+    Abc_Print( -2, "\t           https://people.eecs.berkeley.edu/~alanmi/publications/other/iwls25_dg.pdf\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
 int Abc_CommandAbc9LNetMap( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern Abc_Ntk_t * Gia_ManPerformLNetMap( Gia_Man_t * p, int GroupSize, int fUseFixed, int fTryNew, int fVerbose );
@@ -47220,7 +47296,7 @@ int Abc_CommandAbc9Trace( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Abc_CommandAbc9Speedup(): Mapping of the AIG is not defined.\n" );
         return 1;
     }
-    pAbc->pGia->pLutLib = fUseLutLib ? pAbc->pLibLut : NULL;
+    pAbc->pGia->pLutLib = fUseLutLib ? Abc_FrameReadLibLut() : NULL;
     Gia_ManDelayTraceLutPrint( pAbc->pGia, fVerbose );
     return 0;
 
