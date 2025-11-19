@@ -1188,11 +1188,11 @@ int Gia_ManFromIfLogicCreateLutSpecial( Gia_Man_t * pNew, word * pRes, Vec_Int_t
 ***********************************************************************/
 int Gia_ManFromIfLogicCreateLutSpecialJ( Gia_Man_t * pNew, word * pRes, Vec_Int_t * vLeaves, Vec_Int_t * vLeavesTemp, Vec_Int_t * vCover, Vec_Int_t * vMapping, Vec_Int_t * vMapping2, Vec_Int_t * vPacking )
 {
-    word z = If_CutPerformDeriveJ( NULL, (unsigned *)pRes, Vec_IntSize(vLeaves), Vec_IntSize(vLeaves), NULL, 1 );
     word Truth;
     int i, iObjLit1, iObjLit2, iObjLit3;
-
-    if ( ((z >> 63) & 1) == 0 ) // S44 decomposition
+    word z = If_CutPerformDeriveJ( NULL, (unsigned *)pRes, Vec_IntSize(vLeaves), Vec_IntSize(vLeaves), NULL, 1 );
+    assert( z != 0 );
+    if ( ((z >> 63) & 1) == 0 )
     {   
         // create first LUT
         Vec_IntClear( vLeavesTemp );
@@ -1292,31 +1292,13 @@ int Gia_ManFromIfLogicCreateLutSpecialJ( Gia_Man_t * pNew, word * pRes, Vec_Int_
 
 ***********************************************************************/
 int Gia_ManFromIfLogicNode( void * pIfMan, Gia_Man_t * pNew, int iObj, Vec_Int_t * vLeaves, Vec_Int_t * vLeavesTemp, 
-    word * pRes, char * pStr, Vec_Int_t * vCover, Vec_Int_t * vMapping, Vec_Int_t * vMapping2, Vec_Int_t * vPacking, int fCheck75, int fCheck44e )
+    word * pRes, char * pStr, Vec_Int_t * vCover, Vec_Int_t * vMapping, Vec_Int_t * vMapping2, Vec_Int_t * vPacking, int fCheck75 )
 {
     int nLeaves = Vec_IntSize(vLeaves);
     int i, Length, nLutLeaf, nLutLeaf2, nLutRoot, iObjLit1, iObjLit2, iObjLit3;
     // workaround for the special case
     if ( fCheck75 )
         pStr = "54";
-    // perform special case matching for 44
-    if ( fCheck44e )
-    {
-        if ( Vec_IntSize(vLeaves) <= 5 )
-        {
-            // create mapping
-            iObjLit1 = Gia_ManFromIfLogicCreateLut( pNew, pRes, vLeaves, vCover, vMapping, vMapping2 );
-            // write packing
-            if ( !Gia_ObjIsCi(Gia_ManObj(pNew, Abc_Lit2Var(iObjLit1))) && iObjLit1 > 1 )
-            {
-                Vec_IntPush( vPacking, 1 );
-                Vec_IntPush( vPacking, Abc_Lit2Var(iObjLit1) );
-                Vec_IntAddToEntry( vPacking, 0, 1 );
-            }
-            return iObjLit1;
-        }
-        return Gia_ManFromIfLogicCreateLutSpecialJ( pNew, pRes, vLeaves, vLeavesTemp, vCover, vMapping, vMapping2, vPacking );
-    }
     if ( ((If_Man_t *)pIfMan)->pPars->fLut6Filter && Vec_IntSize(vLeaves) == 6 )
     {
         extern word If_Dec6Perform( word t, int fDerive );
@@ -1916,6 +1898,340 @@ void Gia_ManFromIfGetConfig( Vec_Int_t * vConfigs, If_Man_t * pIfMan, If_Cut_t *
         Vec_StrPush( vConfigsStr, '\n' );
     }
 }
+/**Function*************************************************************
+
+  Synopsis    [Print configuration during encoding.]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_ManConfigPrint( word Truth4, word z, int nLeaves )
+{
+    static int Count = 0;
+    int i;
+    printf( "[%4d] Encoding (nLeaves=%d): ", Count++, nLeaves );
+    // Simple LUT4 case (Truth4 != 0, z == 0)
+    if ( z == 0 )
+    {
+        printf( "%04lX{", (unsigned long)(Truth4 & 0xFFFF) );
+        for ( i = 0; i < nLeaves && i < 4; i++ )
+            printf( "%c", 'a' + i );
+        printf( "} [Cell 0, LUT4]\n" );
+        return;
+    }
+    if ( ((z >> 63) & 1) == 0 )
+    {
+        // Extract truth tables
+        word Truth1 = z & 0xFFFF;
+        word Truth2 = (z >> 32) & 0xFFFF;
+        printf( "h=%04lX{", (unsigned long)Truth1 );
+        // First LUT4 inputs from bits 16-31
+        for ( i = 0; i < 4; i++ )
+        {
+            int v = (int)((z >> (16 + (i << 2))) & 7);
+            if ( v == 6 && nLeaves == 5 )
+                printf( "0" );  // Constant 0 for 5-input cuts
+            else if ( v == 7 )
+                printf( "?" );  // Internal connection (shouldn't appear in first LUT)
+            else if ( v <= 6 )
+                printf( "%c", 'a' + v );
+            else
+                printf( "?" );
+        }
+        printf( "} ");
+        printf( "i=%04lX{", (unsigned long)Truth2 );
+        // Second LUT4 inputs from bits 48-63
+        for ( i = 0; i < 4; i++ )
+        {
+            int v = (int)((z >> (48 + (i << 2))) & 7);
+            if ( v == 6 && nLeaves == 5 )
+                printf( "0" );  // Constant 0 for 5-input cuts
+            else if ( v == 7 )
+                printf( "h" );  // Output of first LUT
+            else if ( v <= 6 )
+                printf( "%c", 'a' + v );
+            else
+                printf( "?" );
+        }
+        printf( "} [Cell 1, S44]\n" );
+    }
+    else
+    {
+        int Pla2Var[9];
+        extern void If_PermUnpack( unsigned Value, int Pla2Var[9] );
+        If_PermUnpack( (unsigned)(z >> 32), Pla2Var );
+        // Extract truth tables
+        word Truth1 = z & 0xFFFF;
+        word Truth2 = (z >> 16) & 0xFFFF;
+        printf( "j=%04lX{", (unsigned long)Truth1 );
+        // First LUT4 inputs
+        for ( i = 0; i < 4; i++ )
+        {
+            if ( Pla2Var[i] == 9 )
+                printf( "0" );  // Will be encoded as constant 0
+            else if ( Pla2Var[i] < 9 )
+                printf( "%c", 'a' + Pla2Var[i] );
+            else
+                printf( "?" );
+        }
+        printf( "} ");
+        printf( "k=%04lX{", (unsigned long)Truth2 );
+        // Second LUT4 inputs
+        for ( i = 4; i < 8; i++ )
+        {
+            if ( Pla2Var[i] == 9 )
+                printf( "0" );  // Will be encoded as constant 0
+            else if ( Pla2Var[i] < 9 )
+                printf( "%c", 'a' + Pla2Var[i] );
+            else
+                printf( "?" );
+        }
+        printf( "} ");
+        // final
+        printf( "l=<" );
+        if ( Pla2Var[8] == 9 )
+            printf( "0" );  // Will be encoded as constant 0
+        else if ( Pla2Var[8] < 9 )
+            printf( "%c", 'a' + Pla2Var[8] );
+        else
+            printf( "?" );
+        printf( "jk> [Cell 2, 9-input MUX]\n" );
+    }
+}
+
+/**Function*************************************************************
+
+  Synopsis    [Print cell configuration data.]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_ManConfigPrint2( unsigned char * pConfigData, int nLeaves )
+{
+    unsigned char CellId = pConfigData[0];
+    int i;
+    static int Count = 0;
+    printf( "%6d : ", Count++ );  // Print instance number
+    printf( "[Cell %d with %d leaves]  ", CellId, nLeaves );
+    if ( CellId == 0 )
+    {
+        assert( nLeaves <= 4 );
+        // Extract 16-bit truth table
+        word Truth = ((word)pConfigData[5] << 8) | pConfigData[6];
+        printf( "e=%04lX{", (unsigned long)Truth );
+        // Print as simple {abcd} since it's just a direct LUT4
+        for ( i = 0; i < nLeaves; i++ )
+            printf( "%c", 'a' + i );
+        for ( ; i < 4; i++ )
+            printf( "%c", '0' );
+        printf( "}\n" );
+    }
+    else if ( CellId == 1 )
+    {
+        // First LUT4
+        word Truth1 = ((word)pConfigData[8] << 8) | pConfigData[9];
+        printf( "h=%04lX{", (unsigned long)Truth1 );
+        for ( i = 0; i < 4; i++ )
+        {
+            int v = pConfigData[1+i];
+            if ( v == 0 )
+                printf( "0");
+            else if ( v == 1 )
+                printf( "1");
+            else if ( v >= 2 && v < 2 + nLeaves )
+                printf( "%c", 'a' + (v-2));
+            else
+                printf( "?");
+        }
+        printf( "};");
+        // Second LUT4
+        word Truth2 = ((word)pConfigData[10] << 8) | pConfigData[11];
+        printf( "i=%04lX{", (unsigned long)Truth2 );
+        for ( i = 4; i < 7; i++ )
+        {
+            int v = pConfigData[1+i];
+            if ( v == 0 )
+                printf( "0");
+            else if ( v == 1 )
+                printf( "1");
+            else if ( v >= 2 && v < 2 + nLeaves )
+                printf( "%c", 'a' + (v-2));
+            else if ( v == 9 )
+                printf( "h");  // Output of first LUT
+            else
+                printf( "?");
+        }
+        printf( "h}\n" );
+    }
+    else if ( CellId == 2 )
+    {
+        // First LUT4
+        word Truth1 = ((word)pConfigData[10] << 8) | pConfigData[11];
+        printf( "j=%04lX{", (unsigned long)Truth1 );
+        for ( i = 0; i < 4; i++ )
+        {
+            int v = pConfigData[1+i];
+            if ( v == 0 )
+                printf( "0");
+            else if ( v == 1 )
+                printf( "1");
+            else if ( v >= 2 && v < 2 + nLeaves )
+                printf( "%c", 'a' + (v-2));
+            else
+                printf( "?");
+        }
+        printf( "};");
+        // Second LUT4
+        word Truth2 = ((word)pConfigData[12] << 8) | pConfigData[13];
+        printf( "k=%04lX{", (unsigned long)Truth2 );
+        for ( i = 4; i < 8; i++ )
+        {
+            int v = pConfigData[1+i];
+            if ( v == 0 )
+                printf( "0");
+            else if ( v == 1 )
+                printf( "1");
+            else if ( v >= 2 && v < 2 + nLeaves )
+                printf( "%c", 'a' + (v-2));
+            else
+                printf( "?");
+        }
+        printf( "};");
+        // final node
+        printf( "l=<");
+        int v = pConfigData[1+8];
+        if ( v == 0 )
+            printf( "0");
+        else if ( v == 1 )
+            printf( "1");
+        else if ( v >= 2 && v < 2 + nLeaves )
+            printf( "%c", 'a' + (v-2));
+        else
+            printf( "?");
+        printf( "jk>\n" );
+    }
+    else
+    {
+        printf( "Unknown cell type %d!\n", CellId );
+    }
+}
+
+/**Function*************************************************************
+
+  Synopsis    [Derive configurations.]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_ManFromIfGetConfig2( Vec_Str_t * vConfigs2, If_Man_t * pIfMan, word * pTruth, int nLeaves )
+{
+    int i, CellId;
+    int startPos = Vec_StrSize(vConfigs2);
+
+    // Determine cell type based on the number of leaves and configuration
+    if ( nLeaves <= 4 ) // 7 bytes = 1 byte CellId + 4 bytes mapping + 2 bytes truth table
+    {
+        // Cell type 0: Simple LUT4
+        CellId = 0;
+        // Write CellId
+        Vec_StrPush( vConfigs2, (char)CellId );
+        // Write mapping
+        for ( i = 0; i < nLeaves; i++ )
+            Vec_StrPush( vConfigs2, 2+i );
+        for ( ; i < 4; i++ )
+            Vec_StrPush( vConfigs2, 0 );
+        // Write truth table (16 bits for LUT4)
+        word Truth = pTruth[0];
+        Vec_StrPush( vConfigs2, (char)((Truth >> 8) & 0xFF) );
+        Vec_StrPush( vConfigs2, (char)(Truth & 0xFF) );
+        assert( startPos + 7 == Vec_StrSize(vConfigs2) );
+        //Gia_ManConfigPrint( Truth, 0, nLeaves );
+    }
+    else // 12 bytes = 1 byte CellId + 7 bytes mapping + 4 bytes truth tables
+    {
+        word z = If_CutPerformDeriveJ( pIfMan, (unsigned *)pTruth, nLeaves, nLeaves, NULL, 1 );
+        //Gia_ManConfigPrint( 0, z, nLeaves );
+        if ( ((z >> 63) & 1) == 0 )
+        {
+            CellId = 1;
+            Vec_StrPush( vConfigs2, (char)CellId );
+            // Write input mapping 
+            for ( i = 0; i < 4; i++ )
+            {
+                int v = (int)((z >> (16 + (i << 2))) & 7);
+                if ( v == 6 && nLeaves == 5 )
+                    Vec_StrPush( vConfigs2, 0 );
+                else
+                    Vec_StrPush( vConfigs2, 2+v );
+            }
+            int iSpecial = -1;
+            for ( i = 0; i < 4; i++ )
+            {
+                int v = (int)((z >> (48 + (i << 2))) & 7);
+                if ( v == 6 && nLeaves == 5 )
+                    Vec_StrPush( vConfigs2, 0 );
+                else if ( v != 7 )
+                    Vec_StrPush( vConfigs2, 2+v );
+                else if ( v == 7 )
+                    iSpecial = i;                    
+            }
+            // Transform the truth table
+            assert( iSpecial >= 0 );
+            word Truth = (z >> 32) & 0xFFFF;
+            Truth = Abc_Tt6Stretch( Truth, 4 );
+            for ( int v = iSpecial; v < 3; v++ )
+                Truth = Abc_Tt6SwapAdjacent( Truth, v );
+            // Write truth tables
+            word Truth1 = z & 0xFFFF;
+            //word Truth2 = (z >> 32) & 0xFFFF;
+            word Truth2 = Truth & 0xFFFF;
+            Vec_StrPush( vConfigs2, (char)((Truth1 >> 8) & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)(Truth1 & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)((Truth2 >> 8) & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)(Truth2 & 0xFF) );
+            assert( startPos + 12 == Vec_StrSize(vConfigs2) );
+        }
+        else // 14 bytes = 1 byte CellId + 9 bytes mapping + 4 bytes truth tables
+        {
+            CellId = 2;
+            int Pla2Var[9];
+            extern void If_PermUnpack( unsigned Value, int Pla2Var[9] );
+            If_PermUnpack( (unsigned)(z >> 32), Pla2Var );
+            // Write CellId
+            Vec_StrPush( vConfigs2, (char)CellId );
+            // Write input mapping 
+            for ( i = 0; i < 9; i++ )
+            {
+                if ( Pla2Var[i] == 9 )
+                    Vec_StrPush( vConfigs2, 0 );
+                else 
+                    Vec_StrPush( vConfigs2, Pla2Var[i] + 2 );
+            }            
+            // Write truth tables for the two LUT4s only (MUX is structural, not a LUT)
+            word Truth1 = z & 0xFFFF;
+            word Truth2 = (z >> 16) & 0xFFFF;
+            Vec_StrPush( vConfigs2, (char)((Truth1 >> 8) & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)(Truth1 & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)((Truth2 >> 8) & 0xFF) );
+            Vec_StrPush( vConfigs2, (char)(Truth2 & 0xFF) );
+            assert( startPos + 14 == Vec_StrSize(vConfigs2) );
+        }
+    }
+    if ( pIfMan->pPars->fVerboseTrace ) 
+        Gia_ManConfigPrint2( (unsigned char*)Vec_StrEntryP(vConfigs2, startPos), nLeaves );
+}
 int Gia_ManFromIfLogicFindCell( If_Man_t * pIfMan, Gia_Man_t * pNew, Gia_Man_t * pTemp, If_Cut_t * pCutBest, Ifn_Ntk_t * pNtkCell, int nLutMax, Vec_Int_t * vLeaves, Vec_Int_t * vLits, Vec_Int_t * vCover, Vec_Int_t * vMapping, Vec_Int_t * vMapping2, Vec_Int_t * vConfigs )
 {
     int iLit;
@@ -2109,18 +2425,19 @@ Gia_Man_t * Gia_ManFromIfLogic( If_Man_t * pIfMan )
     If_Cut_t * pCutBest;
     If_Obj_t * pIfObj, * pIfLeaf;
     Vec_Int_t * vMapping, * vMapping2, * vPacking = NULL, * vConfigs = NULL;
+    Vec_Str_t * vConfigs2 = NULL;
     Vec_Int_t * vLeaves, * vLeaves2, * vCover, * vLits;
     Vec_Str_t * vConfigsStr = NULL;
     Ifn_Ntk_t * pNtkCell = NULL;
     sat_solver * pSat = NULL;
     int i, k, Entry;
     assert( !pIfMan->pPars->fDeriveLuts || pIfMan->pPars->fTruth );
-//    if ( pIfMan->pPars->fEnableCheck07 )
-//        pIfMan->pPars->fDeriveLuts = 0;
+    //if ( pIfMan->pPars->fEnableCheck07 )
+    //    pIfMan->pPars->fDeriveLuts = 0;
     // start mapping and packing
     vMapping  = Vec_IntStart( If_ManObjNum(pIfMan) );
     vMapping2 = Vec_IntStart( 1 );
-    if ( pIfMan->pPars->fDeriveLuts && (pIfMan->pPars->pLutStruct || pIfMan->pPars->fEnableCheck75 || pIfMan->pPars->fEnableCheck75u || pIfMan->pPars->fEnableCheck07) )
+    if ( pIfMan->pPars->fDeriveLuts && (pIfMan->pPars->pLutStruct || pIfMan->pPars->fEnableCheck75 || pIfMan->pPars->fEnableCheck75u) )
     {
         vPacking = Vec_IntAlloc( 1000 );
         Vec_IntPush( vPacking, 0 );
@@ -2136,6 +2453,8 @@ Gia_Man_t * Gia_ManFromIfLogic( If_Man_t * pIfMan )
         if ( fWriteConfigs )
             vConfigsStr = Vec_StrAlloc( 1000 );
     }
+    if ( pIfMan->pPars->fEnableCheck07 )
+        vConfigs2 = Vec_StrAlloc( 1000 );
     // create new manager
     pNew = Gia_ManStart( If_ManObjNum(pIfMan) );
     // iterate through nodes used in the mapping
@@ -2219,10 +2538,21 @@ Gia_Man_t * Gia_ManFromIfLogic( If_Man_t * pIfMan )
                         if ( If_CutLeafBit(pCutBest, k) )
                             Abc_TtFlip( pTruth, Abc_TtWordNum(pCutBest->nLeaves), k );
                 // perform decomposition of the cut
-                pIfObj->iCopy = Gia_ManFromIfLogicNode( pIfMan, pNew, i, vLeaves, vLeaves2, pTruth, pIfMan->pPars->pLutStruct, vCover, vMapping, vMapping2, vPacking, (pIfMan->pPars->fEnableCheck75 || pIfMan->pPars->fEnableCheck75u), pIfMan->pPars->fEnableCheck07 );
+                if ( pIfMan->pPars->fEnableCheck07 )
+                    pIfObj->iCopy = Gia_ManFromIfLogicCreateLut( pNew, pTruth, vLeaves, vCover, vMapping, vMapping2 );
+                else
+                    pIfObj->iCopy = Gia_ManFromIfLogicNode( pIfMan, pNew, i, vLeaves, vLeaves2, pTruth, pIfMan->pPars->pLutStruct, vCover, vMapping, vMapping2, vPacking, (pIfMan->pPars->fEnableCheck75 || pIfMan->pPars->fEnableCheck75u) );
                 pIfObj->iCopy = Abc_LitNotCond( pIfObj->iCopy, pCutBest->fCompl );
                 if ( vConfigs && Vec_IntSize(vLeaves) > 1 && !Gia_ObjIsCi(Gia_ManObj(pNew, Abc_Lit2Var(pIfObj->iCopy))) && pIfObj->iCopy > 1 )
                     Gia_ManFromIfGetConfig( vConfigs, pIfMan, pCutBest, pIfObj->iCopy, vConfigsStr );
+                else if ( vConfigs2 && Vec_IntSize(vLeaves) > 1 && !Gia_ObjIsCi(Gia_ManObj(pNew, Abc_Lit2Var(pIfObj->iCopy))) && pIfObj->iCopy > 1 ) {
+                    If_CutForEachLeaf( pIfMan, pCutBest, pIfLeaf, k )
+                        if ( Abc_LitIsCompl(pIfLeaf->iCopy) )
+                            Abc_TtFlip( pTruth, Abc_TtWordNum(pCutBest->nLeaves), k );
+                    if ( Abc_LitIsCompl(pIfObj->iCopy) ^ pCutBest->fCompl )
+                        Abc_TtNot( pTruth, Abc_TtWordNum(pCutBest->nLeaves) );
+                    Gia_ManFromIfGetConfig2( vConfigs2, pIfMan, pTruth, pCutBest->nLeaves );
+                }
             }
             else
             {
@@ -2279,11 +2609,14 @@ Gia_Man_t * Gia_ManFromIfLogic( If_Man_t * pIfMan )
     assert( pNew->vPacking == NULL );
     assert( pNew->vConfigs == NULL );
     assert( pNew->pCellStr == NULL );
+    assert( pNew->vConfigs2== NULL );
     pNew->vMapping = vMapping;
     pNew->vPacking = vPacking;
     pNew->vConfigs = vConfigs;
     pNew->pCellStr = vConfigs ? Abc_UtilStrsav( If_DsdManGetCellStr(pIfMan->pIfDsdMan) ) : NULL;
-    assert( !vConfigs || Vec_IntSize(vConfigs) == 2 + Vec_IntEntry(vConfigs, 0) * Vec_IntEntry(vConfigs, 1) );
+    pNew->vConfigs2= vConfigs2;
+    assert( !vConfigs  || Vec_IntSize(vConfigs)  == 2 + Vec_IntEntry(vConfigs,  0) * Vec_IntEntry(vConfigs,  1) );
+    // vConfigs2 is now a byte vector, no fixed size relationship
     // verify that COs have mapping
     {
         Gia_Obj_t * pObj;
@@ -2503,6 +2836,10 @@ void Gia_ManTransferTiming( Gia_Man_t * p, Gia_Man_t * pGia )
         p->vConfigs     = pGia->vConfigs;     pGia->vConfigs     = NULL;
         p->pCellStr     = pGia->pCellStr;     pGia->pCellStr     = NULL;
     }
+    if ( pGia->vConfigs2 )
+    {
+        p->vConfigs2    = pGia->vConfigs2;    pGia->vConfigs2    = NULL;
+    }
     if ( pGia->pManTime == NULL )
         return;
     p->pManTime    = pGia->pManTime;    pGia->pManTime    = NULL;
@@ -2628,6 +2965,7 @@ Gia_Man_t * Gia_ManPerformMappingInt( Gia_Man_t * p, If_Par_t * pPars )
 */
     ABC_FREE( p->pCellStr );
     Vec_IntFreeP( &p->vConfigs );
+    Vec_StrFreeP( &p->vConfigs2 );
     // disable cut minimization when GIA strucure is needed
     if ( !pPars->fDelayOpt && !pPars->fDelayOptLut && !pPars->fDsdBalance && !pPars->fUserRecLib && !pPars->fUserSesLib && !pPars->fDeriveLuts && !pPars->fUseDsd && !pPars->fUseTtPerm && !pPars->pFuncCell2 )
         pPars->fCutMin = 0;
@@ -2692,7 +3030,7 @@ Gia_Man_t * Gia_ManPerformMappingInt( Gia_Man_t * p, If_Par_t * pPars )
     pNew->pSpec = Abc_UtilStrsav( p->pSpec );
     Gia_ManSetRegNum( pNew, Gia_ManRegNum(p) );
     // print delay trace
-    if ( pPars->fVerboseTrace )
+    if ( pPars->fVerboseTrace && !pPars->fEnableCheck07 )
     {
         pNew->pLutLib = pPars->pLutLib;
         Gia_ManDelayTraceLutPrint( pNew, 1 );

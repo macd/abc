@@ -239,10 +239,15 @@ int cadical_solver_addvar(cadical_solver* s) {
 
 ***********************************************************************/
 void cadical_solver_setnvars(cadical_solver* s,int n) {
-  s->nVars = n;
-  if(ccadical_vars((CCaDiCaL*)s->p) == 0) {
+  if ( n <= s->nVars )
+    return;
+  if ( s->nVars == 0 )
     ccadical_reserve((CCaDiCaL*)s->p, n);
+  else {
+    assert( 0 );
+    ccadical_reserve_difference((CCaDiCaL*)s->p, n - s->nVars);
   }
+  s->nVars = n;
 }
 
 /**Function*************************************************************
@@ -259,6 +264,36 @@ void cadical_solver_setnvars(cadical_solver* s,int n) {
 ***********************************************************************/
 int cadical_solver_get_var_value(cadical_solver* s, int v) {
   return ccadical_val((CCaDiCaL*)s->p, v + 1) > 0;
+}
+
+/**Function*************************************************************
+
+  Synopsis    [get number of clauses]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int cadical_solver_nclauses(cadical_solver* s) {
+  return ccadical_clauses((CCaDiCaL*)s->p);
+}
+
+/**Function*************************************************************
+
+  Synopsis    [get number of conflicts]
+
+  Description []
+               
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int cadical_solver_nconflicts(cadical_solver* s) {
+  return ccadical_conflicts((CCaDiCaL*)s->p);
 }
 
 
