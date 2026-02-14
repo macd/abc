@@ -1,0 +1,6 @@
+setup.cfg
+setup.py
+ABC_macd.egg-info/PKG-INFO
+ABC_macd.egg-info/SOURCES.txt
+ABC_macd.egg-info/dependency_links.txt
+ABC_macd.egg-info/top_level.txt
