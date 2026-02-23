@@ -441,6 +441,7 @@ int CmdCommandHistory( Abc_Frame_t * pAbc, int argc, char **argv )
     char * pName, * pStr = NULL;
     int i, c;
     int nPrints = 20;
+    int nPrinted = 0;
     Extra_UtilGetoptReset();
     while ( ( c = Extra_UtilGetopt( argc, argv, "h" ) ) != EOF )
     {
@@ -452,29 +453,68 @@ int CmdCommandHistory( Abc_Frame_t * pAbc, int argc, char **argv )
                 goto usage;
         }
     }
-    if ( argc > globalUtilOptind + 1 )
+    if ( argc > globalUtilOptind + 2 )
         goto usage;
-    // get the number from the command line
-    pStr = argc == globalUtilOptind+1 ? argv[globalUtilOptind] : NULL;
-    if ( pStr && pStr[0] >= '1' && pStr[0] <= '9' )
-        nPrints = atoi(pStr), pStr = NULL;
+    // parse arguments: can be [substring] [number] in either order
+    if ( argc == globalUtilOptind + 1 )
+    {
+        // one argument: either number or substring
+        pStr = argv[globalUtilOptind];
+        if ( pStr && pStr[0] >= '1' && pStr[0] <= '9' )
+        {
+            nPrints = atoi(pStr);
+            pStr = NULL;
+        }
+    }
+    else if ( argc == globalUtilOptind + 2 )
+    {
+        // two arguments: substring and number
+        char * arg1 = argv[globalUtilOptind];
+        char * arg2 = argv[globalUtilOptind + 1];
+
+        // Try to parse second argument as number
+        if ( arg2[0] >= '1' && arg2[0] <= '9' )
+        {
+            pStr = arg1;
+            nPrints = atoi(arg2);
+        }
+        // Try to parse first argument as number
+        else if ( arg1[0] >= '1' && arg1[0] <= '9' )
+        {
+            nPrints = atoi(arg1);
+            pStr = arg2;
+        }
+        else
+        {
+            // Neither is a number, error
+            goto usage;
+        }
+    }
+
     // print the commands
     if ( pStr == NULL ) {
+        // No search string, show last nPrints entries
         Vec_PtrForEachEntryStart( char *, pAbc->aHistory, pName, i, Abc_MaxInt(0, Vec_PtrSize(pAbc->aHistory)-nPrints) )
-            fprintf( pAbc->Out, "%2d : %s\n", Vec_PtrSize(pAbc->aHistory)-i, pName );
+            fprintf( pAbc->Out, "%4d : %s\n", Vec_PtrSize(pAbc->aHistory)-i, pName );
     }
     else {
+        // Search string provided, show up to nPrints matching entries
         Vec_PtrForEachEntry( char *, pAbc->aHistory, pName, i )
             if ( strstr(pName, pStr) )
-                fprintf( pAbc->Out, "%2d : %s\n", Vec_PtrSize(pAbc->aHistory)-i, pName );
+            {
+                fprintf( pAbc->Out, "%4d : %s\n", Vec_PtrSize(pAbc->aHistory)-i, pName );
+                if ( ++nPrinted >= nPrints )
+                    break;
+            }
     }
     return 0;
 
 usage:
-    fprintf( pAbc->Err, "usage: history [-h] <num>\n" );
+    fprintf( pAbc->Err, "usage: history [-h] [substring] [num]\n" );
     fprintf( pAbc->Err, "\t        lists the last commands entered on the command line\n" );
-    fprintf( pAbc->Err, "\t-h    : print the command usage\n" );
-    fprintf( pAbc->Err, "\t<num> : the maximum number of entries to show [default = %d]\n", nPrints );
+    fprintf( pAbc->Err, "\t-h        : print the command usage\n" );
+    fprintf( pAbc->Err, "\tsubstring : search for commands containing this substring\n" );
+    fprintf( pAbc->Err, "\tnum       : the maximum number of entries to show [default = %d]\n", nPrints );
     return ( 1 );
 }
 

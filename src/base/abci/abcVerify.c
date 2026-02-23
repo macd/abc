@@ -834,32 +834,51 @@ static void Abc_NtkVerifyPrintWords( Vec_Ptr_t * vWords )
     }
 }
 
-void Abc_NtkVerifyPrintCex( const int * pModel, const int * pValues1, const int * pValues2, 
-    const char * const * ppInputNames, int nInputs, const char * const * ppOutputNames, int nOutputs, 
+void Abc_NtkVerifyPrintCex( const int * pModel, const int * pValues1, const int * pValues2,
+    const char * const * ppInputNames, int nInputs, const char * const * ppOutputNames, int nOutputs,
     const char * pNtkName1, const char * pNtkName2 )
 {
     Vec_Ptr_t * vInputs   = Vec_PtrAlloc( 0 );
     Vec_Ptr_t * vOutputs1 = Vec_PtrAlloc( 0 );
     Vec_Ptr_t * vOutputs2 = Vec_PtrAlloc( 0 );
+    char * pBaseName1 = NULL;
+    char * pBaseName2 = NULL;
+
     Abc_NtkVerifyCollectWords( vInputs, ppInputNames, pModel, nInputs );
     Abc_NtkVerifyCollectWords( vOutputs1, ppOutputNames, pValues1, nOutputs );
     if ( pValues2 )
         Abc_NtkVerifyCollectWords( vOutputs2, ppOutputNames, pValues2, nOutputs );
+
+    // Extract base names for printing
+    if ( pNtkName1 )
+    {
+        char * pFileNameOnly = Extra_FileNameWithoutPath( (char *)pNtkName1 );
+        pBaseName1 = Extra_FileNameGeneric( pFileNameOnly );
+    }
+    if ( pNtkName2 )
+    {
+        char * pFileNameOnly = Extra_FileNameWithoutPath( (char *)pNtkName2 );
+        pBaseName2 = Extra_FileNameGeneric( pFileNameOnly );
+    }
+
     if ( Vec_PtrSize(vInputs) || Vec_PtrSize(vOutputs1) || Vec_PtrSize(vOutputs2) )
     {
         printf( "INPUT: " );
         Abc_NtkVerifyPrintWords( vInputs );
         printf( ".  OUTPUT: " );
         Abc_NtkVerifyPrintWords( vOutputs1 );
-        printf( " (%s)", pNtkName1 ? pNtkName1 : "network1" );
+        printf( " (%s)", pBaseName1 ? pBaseName1 : (pNtkName1 ? pNtkName1 : "network1") );
         if ( pValues2 && Vec_PtrSize(vOutputs2) )
         {
             printf( ", " );
             Abc_NtkVerifyPrintWords( vOutputs2 );
-            printf( " (%s)", pNtkName2 ? pNtkName2 : "network2" );
+            printf( " (%s)", pBaseName2 ? pBaseName2 : (pNtkName2 ? pNtkName2 : "network2") );
         }
         printf( ".\n" );
     }
+
+    ABC_FREE( pBaseName1 );
+    ABC_FREE( pBaseName2 );
     Abc_NtkVerifyFreeWords( vInputs );
     Abc_NtkVerifyFreeWords( vOutputs1 );
     Abc_NtkVerifyFreeWords( vOutputs2 );

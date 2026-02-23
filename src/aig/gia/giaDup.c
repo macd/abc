@@ -23,6 +23,7 @@
 #include "misc/vec/vecWec.h"
 #include "proof/cec/cec.h"
 #include "misc/util/utilTruth.h"
+#include "misc/extra/extra.h"
 
 ABC_NAMESPACE_IMPL_START
 
@@ -6842,6 +6843,125 @@ Gia_Man_t * Gia_ManDupExtractMffc( Gia_Man_t * p, Vec_Int_t * vLits, Vec_Int_t *
     Gia_ManForEachObjVec( vCos, p, pObj, i )
         pObj->Value = Gia_ManAppendCo( pNew, pObj->Value );
     return pNew;
+}
+
+/**Function*************************************************************
+
+  Synopsis    [Divides the AIG into 2 parts at middle level.]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_ManDupSplit( Gia_Man_t * p, int nParts, int nCutLevel )
+{
+    Gia_Man_t * pPart0, * pPart1;
+    Gia_Obj_t * pObj;
+    Vec_Int_t * vCutNodes;
+    Vec_Ptr_t * vCutNames;
+    char * pFileName;
+    int i, Lcut;
+    assert( nParts == 2 );
+
+    // Use specified cut level or default to middle
+    if ( nCutLevel > 0 )
+        Lcut = nCutLevel;
+    else
+        Lcut = Gia_ManLevelNum(p) / 2;
+    printf( "Dividing at level %d (total levels = %d).  ", Lcut, Gia_ManLevelNum(p) );
+
+    // mark the nodes pointed to under the cut
+    Gia_ManForEachAnd( p, pObj, i ) {
+        if ( Gia_ObjLevel(p, pObj) <= Lcut )
+            continue;
+        if ( Gia_ObjLevel(p, Gia_ObjFanin0(pObj)) <= Lcut )
+            Gia_ObjFanin0(pObj)->fMark0 = 1;
+        if ( Gia_ObjLevel(p, Gia_ObjFanin1(pObj)) <= Lcut )
+            Gia_ObjFanin1(pObj)->fMark0 = 1;
+    }
+    Gia_ManForEachCo( p, pObj, i )
+        if ( Gia_ObjLevel(p, Gia_ObjFanin0(pObj)) < Lcut )
+            Gia_ObjFanin0(pObj)->fMark0 = 1;
+
+    // Collect nodes at the cut (nodes at level Lcut that are needed by upper levels)
+    vCutNodes = Vec_IntAlloc( 100 );
+    Gia_ManForEachObj1( p, pObj, i ) {
+        if ( !pObj->fMark0 )
+            continue;
+        pObj->fMark0 = 0;
+        Vec_IntPush( vCutNodes, i );
+    }
+    printf( "Found %d nodes at the cut\n", Vec_IntSize(vCutNodes) );
+
+    // Create names for cut nodes
+    vCutNames = Vec_PtrAlloc( Vec_IntSize(vCutNodes) );
+    for ( i = 0; i < Vec_IntSize(vCutNodes); i++ ) {
+        char Buffer[100]; sprintf( Buffer, "cut[%d]", i );
+        Vec_PtrPush( vCutNames, Abc_UtilStrsav(Buffer) );
+    }
+
+    // Create Part 0 (bottom part: levels 0 to Lcut)
+    pPart0 = Gia_ManStart( Gia_ManObjNum(p) );
+    pFileName = Extra_FileNameGenericAppend( (char *)(p->pSpec ? p->pSpec : "network.aig"), "_part0" );
+    pPart0->pName = Abc_UtilStrsav( pFileName );
+    pPart0->pSpec = Abc_UtilStrsav( pFileName );
+    Gia_ManFillValue( p );
+    Gia_ManConst0(p)->Value = 0;
+    Gia_ManForEachCi( p, pObj, i )
+        pObj->Value = Gia_ManAppendCi( pPart0 );
+    Gia_ManForEachAnd( p, pObj, i )
+        if ( Gia_ObjLevel(p, pObj) <= Lcut )
+            pObj->Value = Gia_ManAppendAnd( pPart0, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
+    Gia_ManForEachObjVec( vCutNodes, p, pObj, i )
+        Gia_ManAppendCo( pPart0, pObj->Value );
+
+    // Add names to Part 0
+    if ( p->vNamesIn ) {
+        pPart0->vNamesIn = Vec_PtrDupStr( p->vNamesIn );
+        pPart0->vNamesOut = Vec_PtrDupStr( vCutNames );
+    }
+
+    // Write Part 0
+    pFileName = Extra_FileNameGenericAppend( (char *)(p->pSpec ? p->pSpec : "network.aig"), "_part0.aig" );
+    Gia_AigerWrite( pPart0, pFileName, 0, 0, 0 );
+    printf( "Part 0: PI = %d, PO = %d, AND = %d, written to %s\n",
+        Gia_ManCiNum(pPart0), Gia_ManCoNum(pPart0), Gia_ManAndNum(pPart0), pFileName );
+    Gia_ManStop( pPart0 );
+
+    // Create Part 1 (top part: levels > Lcut)
+    pPart1 = Gia_ManStart( Gia_ManObjNum(p) );
+    pFileName = Extra_FileNameGenericAppend( (char *)(p->pSpec ? p->pSpec : "network.aig"), "_part1" );
+    pPart1->pName = Abc_UtilStrsav( pFileName );
+    pPart1->pSpec = Abc_UtilStrsav( pFileName );
+    Gia_ManFillValue( p );
+    Gia_ManConst0(p)->Value = 0;
+    Gia_ManForEachObjVec( vCutNodes, p, pObj, i )
+        pObj->Value = Gia_ManAppendCi( pPart1 );
+    Gia_ManForEachAnd( p, pObj, i )
+        if ( Gia_ObjLevel(p, pObj) > Lcut )
+            pObj->Value = Gia_ManAppendAnd( pPart1, Gia_ObjFanin0Copy(pObj), Gia_ObjFanin1Copy(pObj) );
+    Gia_ManForEachCo( p, pObj, i )
+        Gia_ManAppendCo( pPart1, Gia_ObjFanin0Copy(pObj) );
+
+    // Add names to Part 1
+    if ( p->vNamesOut ) {
+        pPart1->vNamesIn = Vec_PtrDupStr( vCutNames );
+        pPart1->vNamesOut = Vec_PtrDupStr( p->vNamesOut );
+    }
+
+    // Write Part 1
+    pFileName = Extra_FileNameGenericAppend( (char *)(p->pSpec ? p->pSpec : "network.aig"), "_part1.aig" );
+    Gia_AigerWrite( pPart1, pFileName, 0, 0, 0 );
+    printf( "Part 1: PI = %d, PO = %d, AND = %d, written to %s\n",
+        Gia_ManCiNum(pPart1), Gia_ManCoNum(pPart1), Gia_ManAndNum(pPart1), pFileName );
+    Gia_ManStop( pPart1 );
+
+    // Clean up
+    Vec_IntFree( vCutNodes );
+    Vec_PtrFreeFree( vCutNames );
 }
 
 ////////////////////////////////////////////////////////////////////////

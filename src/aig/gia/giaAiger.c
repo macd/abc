@@ -677,6 +677,14 @@ Gia_Man_t * Gia_AigerReadFromMemory( char * pContents, int nFileSize, int fGiaSi
                 }
                 pNew->vOutReqs  = Vec_FltStart( nOutputs );
                 memcpy( Vec_FltArray(pNew->vOutReqs),  pCur, (size_t)4*nOutputs ); pCur += 4*nOutputs;
+                // Convert -1.0 back to TIM_ETERNITY for internal use
+                {
+                    float * pArr = Vec_FltArray(pNew->vOutReqs);
+                    int i;
+                    for ( i = 0; i < nOutputs; i++ )
+                        if ( pArr[i] < 0 )
+                            pArr[i] = TIM_ETERNITY;
+                }
                 if ( fVerbose ) printf( "Finished reading extension \"o\".\n" );
             }
             // read equivalence classes
@@ -1562,6 +1570,13 @@ void Gia_AigerWriteS( Gia_Man_t * pInit, char * pFileName, int fWriteSymbols, in
         {
             int nPos = Tim_ManPoNum((Tim_Man_t *)p->pManTime);
             int nFlops = Gia_ManRegNum(p);
+            // Convert TIM_ETERNITY sentinel to -1.0 per XAIG spec
+            {
+                int i;
+                for ( i = 0; i < nPos + nFlops; i++ )
+                    if ( pTimes[i] >= TIM_ETERNITY )
+                        pTimes[i] = -1.0;
+            }
             fprintf( pFile, "o" );
             Gia_FileWriteBufferSize( pFile, 4*(nPos + nFlops) );
             fwrite( pTimes, 1, 4*(nPos + nFlops), pFile );

@@ -591,19 +591,16 @@ void Tim_ManCreate( Tim_Man_t * p, void * pLib, Vec_Flt_t * vInArrs, Vec_Flt_t *
     {
         // Handle special case when timing is only for POs (without boxes/flops)
         // This happens when old files provide timing for actual design POs only
-        if ( Vec_FltSize(vOutReqs) < Tim_ManPoNum(p) )
+        if ( Vec_FltSize(vOutReqs) <= Tim_ManPoNum(p) )
         {
-            // Special case: timing for actual POs only (less than Tim_ManPoNum when boxes exist)
-            for ( i = 0; i < Vec_FltSize(vOutReqs); i++ )
-                p->pCos[i].timeReq = Vec_FltEntry(vOutReqs, i);
-        }
-        else if ( Vec_FltSize(vOutReqs) == Tim_ManPoNum(p) )
-        {
-            // Original case: timing for POs
+            // Timing for POs (may be partial — omitted entries stay at TIM_ETERNITY)
             k = 0;
             Tim_ManForEachPo( p, pObj, i )
+            {
+                if ( k >= Vec_FltSize(vOutReqs) )
+                    break;
                 pObj->timeReq = Vec_FltEntry(vOutReqs, k++);
-            assert( k == Tim_ManPoNum(p) );
+            }
         }
         else
         {
@@ -633,20 +630,27 @@ float * Tim_ManGetArrTimes( Tim_Man_t * p, int nRegs )
     float * pTimes;
     Tim_Obj_t * pObj;
     int i;
+    int fFoundTiming = 0;
     // Check if any PIs have non-zero arrival times
     Tim_ManForEachPi( p, pObj, i )
         if ( pObj->timeArr != 0.0 )
+        {
+            fFoundTiming = 1;
             break;
-    if ( i == Tim_ManPiNum(p) && nRegs > 0 )
+        }
+    if ( !fFoundTiming && nRegs > 0 )
     {
         // Check if any flops have non-zero arrival times
         for ( i = Tim_ManCiNum(p) - nRegs; i < Tim_ManCiNum(p); i++ )
             if ( p->pCis[i].timeArr != 0.0 )
+            {
+                fFoundTiming = 1;
                 break;
-        if ( i == Tim_ManCiNum(p) )
+            }
+        if ( !fFoundTiming )
             return NULL; // No timing info at all
     }
-    else if ( i == Tim_ManPiNum(p) )
+    else if ( !fFoundTiming )
         return NULL;
     // Allocate array for PIs + Flops (compact format, no box outputs)
     pTimes = ABC_FALLOC( float, Tim_ManPiNum(p) + nRegs );
@@ -663,20 +667,27 @@ float * Tim_ManGetReqTimes( Tim_Man_t * p, int nRegs )
     float * pTimes;
     Tim_Obj_t * pObj;
     int i, k = 0;
+    int fFoundConstraint = 0;
     // Check if any POs have non-infinity required times
     Tim_ManForEachPo( p, pObj, i )
         if ( pObj->timeReq != TIM_ETERNITY )
+        {
+            fFoundConstraint = 1;
             break;
-    if ( i == Tim_ManPoNum(p) && nRegs > 0 )
+        }
+    if ( !fFoundConstraint && nRegs > 0 )
     {
         // Check if any flops have non-infinity required times
         for ( i = Tim_ManCoNum(p) - nRegs; i < Tim_ManCoNum(p); i++ )
             if ( p->pCos[i].timeReq != TIM_ETERNITY )
+            {
+                fFoundConstraint = 1;
                 break;
-        if ( i == Tim_ManCoNum(p) )
+            }
+        if ( !fFoundConstraint )
             return NULL; // No timing info at all
     }
-    else if ( i == Tim_ManPoNum(p) )
+    else if ( !fFoundConstraint )
         return NULL;
     // Allocate array for POs + Flops (compact format, no box inputs)
     pTimes = ABC_FALLOC( float, Tim_ManPoNum(p) + nRegs );

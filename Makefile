@@ -4,6 +4,13 @@ CXX  := g++
 AR   := ar
 LD   := $(CXX)
 
+# Auto-enable ccache if available
+CCACHE := $(shell command -v ccache 2>/dev/null)
+ifneq ($(CCACHE),)
+  CC := $(CCACHE) $(CC)
+  CXX := $(CCACHE) $(CXX)
+endif
+
 MSG_PREFIX ?=
 ABCSRC ?= .
 VPATH = $(ABCSRC)
@@ -219,6 +226,7 @@ clean:
 	$(VERBOSE)rm -rvf $(OBJ)
 	$(VERBOSE)rm -rvf $(GARBAGE)
 	$(VERBOSE)rm -rvf $(OBJ:.o=.d)
+	@if [ -n "$(CCACHE)" ]; then echo "$(MSG_PREFIX)ccache available: $(CCACHE)"; fi
 
 tags:
 	etags `find . -type f -regex '.*\.\(c\|h\)'`

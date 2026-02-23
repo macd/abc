@@ -659,6 +659,7 @@ static int Abc_CommandAbc9MulFind3           ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandAbc9BsFind             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9AndCare            ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAbc9Cuts               ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandAbc9Divide             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
 static int Abc_CommandAbc9Test               ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
@@ -1506,8 +1507,9 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "ABC9",         "&mulfind3",     Abc_CommandAbc9MulFind3,               0 );    
     Cmd_CommandAdd( pAbc, "ABC9",         "&bsfind",       Abc_CommandAbc9BsFind,                 0 );    
     Cmd_CommandAdd( pAbc, "ABC9",         "&andcare",      Abc_CommandAbc9AndCare,                0 );   
-    Cmd_CommandAdd( pAbc, "ABC9",         "&cuts",         Abc_CommandAbc9Cuts,                   0 );   
-    
+    Cmd_CommandAdd( pAbc, "ABC9",         "&cuts",         Abc_CommandAbc9Cuts,                   0 );
+    Cmd_CommandAdd( pAbc, "ABC9",         "&divide",       Abc_CommandAbc9Divide,                 0 );
+
     Cmd_CommandAdd( pAbc, "ABC9",         "&test",         Abc_CommandAbc9Test,                   0 );
 
     Cmd_CommandAdd( pAbc, "ABC9",         "&eslim",        Abc_CommandAbc9eSLIM,                  0 );
@@ -34455,9 +34457,9 @@ int Abc_CommandAbc9Get( Abc_Frame_t * pAbc, int argc, char ** argv )
     Aig_Man_t * pAig;
     Gia_Man_t * pGia, * pTemp;
     char * pInits;
-    int c, fGiaSimple = 0, fMapped = 0, fNames = 0, fVerbose = 0;
+    int c, fGiaSimple = 0, fMapped = 0, fNames = 0, fReuseNames = 0, fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "cmnvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "cmnrvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -34469,6 +34471,9 @@ int Abc_CommandAbc9Get( Abc_Frame_t * pAbc, int argc, char ** argv )
             break;
         case 'n':
             fNames ^= 1;
+            break;
+        case 'r':
+            fReuseNames ^= 1;
             break;
         case 'v':
             fVerbose ^= 1;
@@ -34532,17 +34537,38 @@ int Abc_CommandAbc9Get( Abc_Frame_t * pAbc, int argc, char ** argv )
         pGia->vOutReqs = Vec_FltAllocArray( Abc_NtkGetCoRequiredFloats(pNtk), Abc_NtkCoNum(pNtk) );
         pGia->And2Delay = pNtk->AndGateDelay;
     }
+    if ( fReuseNames ) 
+    {
+        if ( pAbc->pGia == NULL )
+        {
+            Abc_Print( -1, "There is no current AIG to reuse names from.\n" );
+            return 1;
+        }
+        if ( Gia_ManCiNum(pGia) != Gia_ManCiNum(pAbc->pGia) )
+        {
+            Abc_Print( -1, "The number of CIs differ.\n" );
+            return 1;
+        }
+        if ( Gia_ManCoNum(pGia) != Gia_ManCoNum(pAbc->pGia) )
+        {
+            Abc_Print( -1, "The number of COs differ.\n" );
+            return 1;
+        }
+        ABC_SWAP( Vec_Ptr_t *, pGia->vNamesIn,  pAbc->pGia->vNamesIn  );
+        ABC_SWAP( Vec_Ptr_t *, pGia->vNamesOut, pAbc->pGia->vNamesOut );
+    }
     Abc_FrameUpdateGia( pAbc, pGia );
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &get [-cmnvh] <file>\n" );
+    Abc_Print( -2, "usage: &get [-cmnrvh] <file>\n" );
     Abc_Print( -2, "\t         converts the current network into GIA and moves it to the &-space\n" );
     Abc_Print( -2, "\t         (if the network is a sequential logic network, normalizes the flops\n" );
     Abc_Print( -2, "\t         to have const-0 initial values, equivalent to \"undc; st; zero\")\n" );
     Abc_Print( -2, "\t-c     : toggles allowing simple GIA to be imported [default = %s]\n", fGiaSimple? "yes": "no" );
     Abc_Print( -2, "\t-m     : toggles preserving the current mapping [default = %s]\n", fMapped? "yes": "no" );
     Abc_Print( -2, "\t-n     : toggles saving CI/CO names of the AIG [default = %s]\n", fNames? "yes": "no" );
+    Abc_Print( -2, "\t-r     : toggles reusing CI/CO names of the current AIG [default = %s]\n", fReuseNames? "yes": "no" );
     Abc_Print( -2, "\t-v     : toggles additional verbose output [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h     : print the command usage\n");
     Abc_Print( -2, "\t<file> : the file name\n");
@@ -35109,15 +35135,17 @@ usage:
 int Abc_CommandAbc9WriteVer( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Gia_WriteVerilog( char * pFileName, Gia_Man_t * pGia, int fUseGates, int fVerbose );
+    extern void Gia_WriteMappedVerilog( char * pFileName, Gia_Man_t * pGia, int fVerbose );
     char * pFileSpec = NULL;
     Abc_Ntk_t * pNtkSpec = NULL;
     char * pFileName;
     char ** pArgvNew;
     int c, nArgcNew;
     int fUseGates = 0;
+    int fUseLuts = 0;
     int fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "Sgvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "Sglvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -35132,6 +35160,9 @@ int Abc_CommandAbc9WriteVer( Abc_Frame_t * pAbc, int argc, char ** argv )
             break;
         case 'g':
             fUseGates ^= 1;
+            break;
+        case 'l':
+            fUseLuts ^= 1;
             break;
         case 'v':
             fVerbose ^= 1;
@@ -35157,7 +35188,21 @@ int Abc_CommandAbc9WriteVer( Abc_Frame_t * pAbc, int argc, char ** argv )
             Abc_Print( -1, "There is no AIG to write.\n" );
             return 1;
         }
-        Gia_WriteVerilog( pFileName, pAbc->pGia, fUseGates, fVerbose );
+        // Check if we should write LUT-based Verilog
+        if ( fUseLuts || (Gia_ManHasMapping(pAbc->pGia) && !fUseGates) )
+        {
+            if ( !Gia_ManHasMapping(pAbc->pGia) )
+            {
+                Abc_Print( -1, "Cannot write LUT-based Verilog because AIG is not mapped.\n" );
+                Abc_Print( -1, "Use \"&if\" to map the AIG first, or omit the -l flag.\n" );
+                return 1;
+            }
+            Gia_WriteMappedVerilog( pFileName, pAbc->pGia, fVerbose );
+        }
+        else
+        {
+            Gia_WriteVerilog( pFileName, pAbc->pGia, fUseGates, fVerbose );
+        }
     }
     else
     {
@@ -35179,13 +35224,15 @@ int Abc_CommandAbc9WriteVer( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &write_ver [-S <file>] [-gvh] <file>\n" );
+    Abc_Print( -2, "usage: &write_ver [-S <file>] [-glvh] <file>\n" );
     Abc_Print( -2, "\t          writes hierarchical Verilog\n" );
     Abc_Print( -2, "\t-S file : file name for the original design (required when hierarchy is present)\n" );
     Abc_Print( -2, "\t-g      : toggle output gates vs assign-statements [default = %s]\n", fUseGates? "gates": "assigns" );
+    Abc_Print( -2, "\t-l      : write LUT6-based Verilog for mapped AIGs [default = %s]\n", fUseLuts? "yes": "no" );
     Abc_Print( -2, "\t-v      : toggle verbose output [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h      : print the command usage\n");
     Abc_Print( -2, "\t<file>  : the file name\n");
+    Abc_Print( -2, "\tNote: When AIG is mapped and -l is not specified, LUT-based output is automatically used.\n");
     return 1;
 }
 
@@ -42559,6 +42606,7 @@ static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModu
     FILE * pFile;
     Gia_Man_t * pGia;
     char * pTemp;
+    char * pOrigFileName = NULL;
     int fVerilog, fSystemVerilog;
 
     *pAbc_ReadAigerOrVerilogFileStatus = 0;
@@ -42586,6 +42634,8 @@ static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModu
     {
         char pCommand[2000];
         int RetValue;
+        // Save the original filename before changing it
+        pOrigFileName = pFileName;
         snprintf( pCommand, sizeof(pCommand),
             "yosys -qp \"read_verilog %s%s; hierarchy %s%s; flatten; proc; opt; async2sync; opt; setundef -undriven -zero; techmap; memory -nomap; memory_map; dffunmap; opt_clean; opt_expr; aigmap; write_aiger -symbols _temp_.aig\"",
             fSystemVerilog ? "-sv " : "", pFileName, pTopModule ? "-top "    : "-auto-top", pTopModule ? pTopModule : "" );
@@ -42604,7 +42654,18 @@ static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModu
 
     pGia = Gia_AigerRead( pFileName, 0, 0, 0 );
     if ( pGia == NULL )
+    {
         Abc_Print( -1, "Reading AIGER from file \"%s\" has failed.\n", pFileName );
+        return NULL;
+    }
+
+    // If we read from a Verilog file, keep the original filename as the spec
+    if ( pOrigFileName != NULL )
+    {
+        ABC_FREE( pGia->pSpec );
+        pGia->pSpec = Abc_UtilStrsav( pOrigFileName );
+    }
+
     return pGia;
 }
 
@@ -59426,13 +59487,83 @@ int Abc_CommandAbc9Cuts( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: cuts [-KC num] [-tdbvh]\n" );
+    Abc_Print( -2, "usage: &cuts [-KC num] [-tdbvh]\n" );
     Abc_Print( -2, "\t         computes K-input cuts for the nodes in the current AIG\n" );
     Abc_Print( -2, "\t-K num : max number of leaves (%d <= num <= %d) [default = %d]\n", 2, 14, nCutSize );
     Abc_Print( -2, "\t-C num : max number of cuts at a node (%d <= num <= %d) [default = %d]\n", 2, 256, nCutNum );
     Abc_Print( -2, "\t-t     : toggle truth table computation and cut minimization [default = %s]\n", fTruth? "yes": "no" );
     Abc_Print( -2, "\t-d     : toggle dumping cuts into a text file [default = %s]\n", fDumpText? "yes": "no" );
     Abc_Print( -2, "\t-v     : toggle printing verbose information [default = %s]\n", fDumpBin? "yes": "no" );
+    Abc_Print( -2, "\t-h     : print the command usage\n");
+    return 1;
+}
+
+/**Function*************************************************************
+
+  Synopsis    []
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+int Abc_CommandAbc9Divide( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern void Gia_ManDupSplit( Gia_Man_t * p, int nParts, int nCutLevel );
+    int nParts = 2;
+    int nCutLevel = 0;
+    int c;
+    Extra_UtilGetoptReset();
+    while ( ( c = Extra_UtilGetopt( argc, argv, "PLvh" ) ) != EOF )
+    {
+        switch ( c )
+        {
+        case 'P':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-P\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nParts = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nParts < 2 )
+                goto usage;
+            break;
+        case 'L':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-L\" should be followed by an integer.\n" );
+                goto usage;
+            }
+            nCutLevel = atoi(argv[globalUtilOptind]);
+            globalUtilOptind++;
+            if ( nCutLevel < 0 )
+                goto usage;
+            break;
+        case 'v':
+            break;
+        case 'h':
+            goto usage;
+        default:
+            goto usage;
+        }
+    }
+    if ( pAbc->pGia == NULL )
+    {
+        Abc_Print( -1, "Abc_CommandAbc9Divide(): There is no AIG.\n" );
+        return 0;
+    }
+    Gia_ManDupSplit( pAbc->pGia, nParts, nCutLevel );
+    return 0;
+
+usage:
+    Abc_Print( -2, "usage: &divide [-P num] [-L num] [-vh]\n" );
+    Abc_Print( -2, "\t         divides AIG into N parts at different levels\n" );
+    Abc_Print( -2, "\t-P num : number of parts to divide into [default = %d]\n", nParts );
+    Abc_Print( -2, "\t-L num : cut level (0 = automatic middle level) [default = %d]\n", nCutLevel );
+    Abc_Print( -2, "\t-v     : toggle printing verbose information [default = no]\n" );
     Abc_Print( -2, "\t-h     : print the command usage\n");
     return 1;
 }

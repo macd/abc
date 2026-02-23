@@ -1294,10 +1294,201 @@ static void GiaHie_DumpInterfaceAssigns( Gia_Man_t * p, char * pFileName )
 
 /**Function*************************************************************
 
+  Synopsis    [Dumps mapped AIG as LUT6 instances in Verilog]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+static void GiaHie_DumpMappedLuts( Gia_Man_t * p, char * pFileName )
+{
+    int i, k, iFanin, nLutSize, nDigits;
+    FILE * pFile;
+    Vec_Int_t * vLeaves;
+    word * pTruth;
+    Gia_Obj_t * pObj;
+
+    // Check if AIG is mapped
+    if ( !Gia_ManHasMapping(p) )
+    {
+        printf( "Cannot write LUT-based Verilog because AIG is not mapped.\n" );
+        return;
+    }
+
+    pFile = fopen( pFileName, "wb" );
+    if ( pFile == NULL )
+    {
+        printf( "Cannot open output file \"%s\".\n", pFileName );
+        return;
+    }
+
+    nDigits = Abc_Base10Log( Gia_ManObjNum(p) );
+    if ( nDigits < 3 )
+        nDigits = 3;
+
+    // Write header
+    fprintf( pFile, "`timescale 1ns/1ps\n\n" );
+
+    // Write LUT module definitions for Yosys compatibility (compact version)
+    fprintf( pFile, "`ifdef LUTSPECS\n" );
+    fprintf( pFile, "module LUT2 #( parameter INIT = 04\'h0 ) ( output O, input I0, I1 );\n" );
+    fprintf( pFile, "  assign O = INIT[ {I1, I0} ];\n" );
+    fprintf( pFile, "endmodule\n" );
+
+    fprintf( pFile, "module LUT3 #( parameter INIT = 08\'h0 ) ( output O, input I0, I1, I2 );\n" );
+    fprintf( pFile, "  assign O = INIT[ {I2, I1, I0} ];\n" );
+    fprintf( pFile, "endmodule\n" );
+
+    fprintf( pFile, "module LUT4 #( parameter INIT = 16\'h0 ) ( output O, input I0, I1, I2, I3 );\n" );
+    fprintf( pFile, "  assign O = INIT[ {I3, I2, I1, I0} ];\n" );
+    fprintf( pFile, "endmodule\n" );
+
+    fprintf( pFile, "module LUT5 #( parameter INIT = 32\'h0 ) ( output O, input I0, I1, I2, I3, I4 );\n" );
+    fprintf( pFile, "  assign O = INIT[ {I4, I3, I2, I1, I0} ];\n" );
+    fprintf( pFile, "endmodule\n" );
+
+    fprintf( pFile, "module LUT6 #( parameter INIT = 64\'h0 ) ( output O, input I0, I1, I2, I3, I4, I5 );\n" );
+    fprintf( pFile, "  assign O = INIT[ {I5, I4, I3, I2, I1, I0} ];\n" );
+    fprintf( pFile, "endmodule\n" );
+    fprintf( pFile, "`endif\n\n" );
+
+    // Write main module
+    fprintf( pFile, "module " );
+    GiaHie_DumpModuleName( pFile, p->pName );
+    fprintf( pFile, " (\n" );
+    GiaHie_DumpPortDecls( p, pFile );
+    fprintf( pFile, "\n);\n\n" );
+
+    // Declare wires for inputs (using object IDs like regular &write_ver)
+    if ( Gia_ManCiNum(p) )
+    {
+        fprintf( pFile, "  wire " );
+        GiaHie_WriteObjRange( pFile, p, 0, Gia_ManCiNum(p), nDigits, 7, 4, 0, 1 );
+        fprintf( pFile, ";\n\n" );
+        GiaHie_DumpInputAssigns( p, pFile, nDigits );
+        fprintf( pFile, "\n" );
+    }
+
+    // Declare wires for outputs (using object IDs like regular &write_ver)
+    if ( Gia_ManCoNum(p) )
+    {
+        fprintf( pFile, "  wire " );
+        GiaHie_WriteObjRange( pFile, p, 0, Gia_ManCoNum(p), nDigits, 7, 4, 0, 0 );
+        fprintf( pFile, ";\n\n" );
+        GiaHie_DumpOutputAssigns( p, pFile, nDigits );
+        fprintf( pFile, "\n" );
+    }
+
+    // Declare internal wires for LUT outputs (10 per line)
+    {
+        int nWiresPerLine = 10;
+        int nWireCount = 0;
+        int fFirst = 1;
+        Gia_ManForEachLut( p, i )
+        {
+            if ( nWireCount == 0 )
+                fprintf( pFile, "  wire " );
+            if ( !fFirst )
+                fprintf( pFile, ", " );
+            fprintf( pFile, "n%0*d", nDigits, i );
+            fFirst = 0;
+            nWireCount++;
+            if ( nWireCount == nWiresPerLine )
+            {
+                fprintf( pFile, ";\n" );
+                nWireCount = 0;
+                fFirst = 1;
+            }
+        }
+        if ( nWireCount > 0 )
+            fprintf( pFile, ";\n" );
+    }
+    fprintf( pFile, "\n" );
+
+    // Initialize truth table computation
+    vLeaves = Vec_IntAlloc( 6 );
+    Gia_ObjComputeTruthTableStart( p, 6 );
+
+    // Write LUT6 instances
+    Gia_ManForEachLut( p, i )
+    {
+        nLutSize = Gia_ObjLutSize( p, i );
+
+        // Collect LUT inputs
+        Vec_IntClear( vLeaves );
+        Gia_LutForEachFanin( p, i, iFanin, k )
+            Vec_IntPush( vLeaves, iFanin );
+
+        // Compute truth table
+        pTruth = Gia_ObjComputeTruthTableCut( p, Gia_ManObj(p, i), vLeaves );
+
+        // Write LUT instance - use appropriate size LUT based on inputs
+        if ( nLutSize <= 1 )
+            nLutSize = 2; // minimum LUT size is 2
+
+        // Determine INIT width and padding
+        int nInitBits = (1 << nLutSize);
+        unsigned long long truthValue = (nLutSize <= 6) ? pTruth[0] : 0;
+
+        // Mask truth value to the appropriate number of bits
+        if ( nLutSize < 6 )
+            truthValue &= ((1ULL << nInitBits) - 1);
+
+        // Write LUT instance with padding for alignment
+        fprintf( pFile, "  (* DONT_TOUCH = \"yes\" *) LUT%d #(", nLutSize );
+
+        // Write INIT parameter with appropriate width and padding aligned to 64-bit width
+        if ( nLutSize == 2 )
+            fprintf( pFile, ".INIT(04'h%01llx               )) u_lut%0*d (", truthValue, nDigits, i );
+        else if ( nLutSize == 3 )
+            fprintf( pFile, ".INIT(08'h%02llx              )) u_lut%0*d (", truthValue, nDigits, i );
+        else if ( nLutSize == 4 )
+            fprintf( pFile, ".INIT(16'h%04llx            )) u_lut%0*d (", truthValue, nDigits, i );
+        else if ( nLutSize == 5 )
+            fprintf( pFile, ".INIT(32'h%08llx        )) u_lut%0*d (", truthValue, nDigits, i );
+        else // nLutSize == 6
+            fprintf( pFile, ".INIT(64'h%016llx)) u_lut%0*d (", truthValue, nDigits, i );
+
+        // Write LUT inputs - only the ones actually used by this LUT size
+        for ( k = 0; k < nLutSize; k++ )
+        {
+            iFanin = Vec_IntEntry( vLeaves, k );
+            if ( k > 0 )
+                fprintf( pFile, ", " );
+            fprintf( pFile, ".I%d(n%0*d)", k, nDigits, iFanin );
+        }
+
+        // Write LUT output
+        fprintf( pFile, ", .O(n%0*d));\n", nDigits, i );
+    }
+
+    // Cleanup truth table computation
+    Gia_ObjComputeTruthTableStop( p );
+    Vec_IntFree( vLeaves );
+
+    fprintf( pFile, "\n" );
+
+    // Connect internal nodes to outputs (like regular &write_ver)
+    Gia_ManForEachCo( p, pObj, i )
+    {
+        fprintf( pFile, "  assign n%0*d = ", nDigits, Gia_ManCoIdToId(p, i) );
+        GiaHie_PrintObjLit( pFile, Gia_ObjFaninId0p(p, pObj), Gia_ObjFaninC0(pObj), nDigits );
+        fprintf( pFile, ";\n" );
+    }
+
+    fprintf( pFile, "\nendmodule\n" );
+    fclose( pFile );
+}
+
+/**Function*************************************************************
+
   Synopsis    []
 
   Description []
-               
+
   SideEffects []
 
   SeeAlso     []
@@ -1312,6 +1503,30 @@ void Gia_WriteVerilog( char * pFileName, Gia_Man_t * pGia, int fUseGates, int fV
         GiaHie_DumpInterfaceGates( pGia, pFileName );
     else
         GiaHie_DumpInterfaceAssigns( pGia, pFileName );
+}
+
+/**Function*************************************************************
+
+  Synopsis    [Writes mapped AIG as LUT6-based Verilog]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+void Gia_WriteMappedVerilog( char * pFileName, Gia_Man_t * pGia, int fVerbose )
+{
+    (void)fVerbose;
+    if ( pFileName == NULL || pGia == NULL )
+        return;
+    if ( !Gia_ManHasMapping(pGia) )
+    {
+        printf( "Cannot write LUT-based Verilog because AIG is not mapped.\n" );
+        return;
+    }
+    GiaHie_DumpMappedLuts( pGia, pFileName );
 }
 
 ////////////////////////////////////////////////////////////////////////
