@@ -512,6 +512,8 @@ clk = Abc_Clock();
     p->fRefined = 0;
     for ( f = 0; f < p->pPars->nFramesK; f++ )
     {
+        if ( Ssw_ManCallbackStop(p) )
+            break;
         // map constants and PIs
         Ssw_ObjSetFrame( p, Aig_ManConst1(p->pAig), f, Aig_ManConst1(p->pFrames) );
         Saig_ManForEachPi( p->pAig, pObj, i )
@@ -540,10 +542,14 @@ clk = Abc_Clock();
         // sweep internal nodes
         Aig_ManForEachNode( p->pAig, pObj, i )
         {
+            if ( Ssw_ManCallbackStop(p) )
+                break;
             pObjNew = Aig_And( p->pFrames, Ssw_ObjChild0Fra(p, pObj, f), Ssw_ObjChild1Fra(p, pObj, f) );
             Ssw_ObjSetFrame( p, pObj, f, pObjNew );
             p->fRefined |= Ssw_ManSweepNodeConstr( p, pObj, f, 1 );
         }
+        if ( i < Aig_ManObjNumMax(p->pAig) )
+            break;
         // quit if this is the last timeframe
         if ( f == p->pPars->nFramesK - 1 )
             break;
@@ -692,6 +698,8 @@ p->timeReduce += Abc_Clock() - clk;
         pProgress = Bar_ProgressStart( stdout, Aig_ManObjNumMax(p->pAig) );
     Aig_ManForEachObj( p->pAig, pObj, i )
     {
+        if ( Ssw_ManCallbackStop(p) )
+            break;
         if ( p->pPars->fVerbose )
             Bar_ProgressUpdate( pProgress, i, NULL );
         if ( Saig_ObjIsLo(p->pAig, pObj) )

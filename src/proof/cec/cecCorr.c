@@ -22,6 +22,13 @@
 
 ABC_NAMESPACE_IMPL_START
 
+static inline int Cec_ParCorShouldStop( Cec_ParCor_t * pPars )
+{
+    if ( pPars == NULL || pPars->pFunc == NULL )
+        return 0;
+    return ((int (*)(void *))pPars->pFunc)( pPars->pData );
+}
+
 
 ////////////////////////////////////////////////////////////////////////
 ///                        DECLARATIONS                              ///
@@ -808,6 +815,8 @@ void Cec_ManLSCorrespondenceBmc( Gia_Man_t * pAig, Cec_ParCor_t * pPars, int nPr
     fChanges = 1;
     for ( i = 0; fChanges && (!pPars->nLimitMax || i < pPars->nLimitMax); i++ )
     {
+        if ( Cec_ParCorShouldStop( pPars ) )
+            break;
         abctime clkBmc = Abc_Clock();
         fChanges = 0;
         pSrm = Gia_ManCorrSpecReduceInit( pAig, pPars->nFrames, nPrefs, !pPars->fLatchCorr, &vOutputs, pPars->fUseRings );
@@ -836,6 +845,8 @@ void Cec_ManLSCorrespondenceBmc( Gia_Man_t * pAig, Cec_ParCor_t * pPars, int nPr
         Vec_StrFree( vStatus );
         Gia_ManStop( pSrm );
         Vec_IntFree( vOutputs );
+        if ( Cec_ParCorShouldStop( pPars ) )
+            break;
     }
     Cec_ManSimStop( pSim );
 }
@@ -975,10 +986,10 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
     // check the base case
     if ( fRunBmcFirst && (!pPars->fLatchCorr || pPars->nFrames > 1) )
         Cec_ManLSCorrespondenceBmc( pAig, pPars, 0 );
-    if ( pPars->pFunc )
+    if ( Cec_ParCorShouldStop( pPars ) )
     {
-        ((int (*)(void *))pPars->pFunc)( pPars->pData );
-        ((int (*)(void *))pPars->pFunc)( pPars->pData );
+        Cec_ManSimStop( pSim );
+        return 1;
     }
     if ( pPars->nStepsMax == 0 )
     {
@@ -989,6 +1000,11 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
     // perform refinement of equivalence classes
     for ( r = 0; r < nIterMax; r++ )
     { 
+        if ( Cec_ParCorShouldStop( pPars ) )
+        {
+            Cec_ManSimStop( pSim );
+            return 1;
+        }
         if ( pPars->nStepsMax == r )
         {
             Cec_ManSimStop( pSim );
@@ -1036,8 +1052,11 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
         Vec_StrFree( vStatus );
         Vec_IntFree( vOutputs );
 //Gia_ManEquivPrintClasses( pAig, 1, 0 );
-        if ( pPars->pFunc )
-            ((int (*)(void *))pPars->pFunc)( pPars->pData );
+        if ( Cec_ParCorShouldStop( pPars ) )
+        {
+            Cec_ManSimStop( pSim );
+            return 1;
+        }
         // quit if const is no longer there
         if ( pPars->fStopWhenGone && Gia_ManPoNum(pAig) == 1 && !Gia_ObjIsConst( pAig, Gia_ObjFaninId0p(pAig, Gia_ManPo(pAig, 0)) ) )
         {
@@ -1448,4 +1467,3 @@ Gia_Man_t * Gia_ManDupStopsTest( Gia_Man_t * p )
 
 
 ABC_NAMESPACE_IMPL_END
-
