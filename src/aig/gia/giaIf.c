@@ -2124,6 +2124,24 @@ void Gia_ManConfigPrint2( unsigned char * pConfigData, int nLeaves )
     }
 }
 
+static inline word Gia_ManFromIfPermuteTruth4( word Truth, int nLeaves, word z )
+{
+    word TruthNew = 0;
+    int i, k, x;
+    assert( nLeaves >= 1 && nLeaves <= 4 );
+    for ( i = 0; i < 16; i++ )
+    {
+        x = 0;
+        for ( k = 0; k < nLeaves; k++ )
+        {
+            int v = (int)((z >> (2 * k)) & 3);
+            x |= ((i >> k) & 1) << v;
+        }
+        TruthNew |= ((Truth >> x) & 1) << i;
+    }
+    return TruthNew;
+}
+
 /**Function*************************************************************
 
   Synopsis    [Derive configurations.]
@@ -2139,12 +2157,15 @@ void Gia_ManFromIfGetConfig2( Vec_Str_t * vConfigs2, If_Man_t * pIfMan, word * p
 {
     int i, CellId;
     int startPos = Vec_StrSize(vConfigs2);
+    If_LibCell_t * pCellLib = pIfMan && pIfMan->pPars ? pIfMan->pPars->pCellLib : NULL;
+    assert( pCellLib != NULL );
 
     // Determine cell type based on the number of leaves and configuration
     if ( nLeaves <= 4 ) // 7 bytes = 1 byte CellId + 4 bytes mapping + 2 bytes truth table
     {
         word z = If_CutPerformDeriveJ( pIfMan, (unsigned *)pTruth, nLeaves, nLeaves, NULL, 1, fDelay );
         int fHavePerm = (z != 0) && ((z & ABC_CONST(0x4000000000000000)) != 0);
+        word Truth = pTruth[0];
         // Cell type 0: Simple LUT4
         CellId = 0;
         // Write CellId
@@ -2158,10 +2179,11 @@ void Gia_ManFromIfGetConfig2( Vec_Str_t * vConfigs2, If_Man_t * pIfMan, word * p
         for ( ; i < 4; i++ )
             Vec_StrPush( vConfigs2, 0 );
         // Write truth table (16 bits for LUT4)
-        word Truth = pTruth[0];
+        if ( fHavePerm )
+            Truth = Gia_ManFromIfPermuteTruth4( Truth, nLeaves, z );
         Vec_StrPush( vConfigs2, (char)((Truth >> 8) & 0xFF) );
         Vec_StrPush( vConfigs2, (char)(Truth & 0xFF) );
-        assert( startPos + 7 == Vec_StrSize(vConfigs2) );
+        assert( startPos + pCellLib->pCellRecordSizes[CellId] == Vec_StrSize(vConfigs2) );
         //Gia_ManConfigPrint( Truth, 0, nLeaves );
     }
     else // 12 bytes = 1 byte CellId + 7 bytes mapping + 4 bytes truth tables
@@ -2206,7 +2228,7 @@ void Gia_ManFromIfGetConfig2( Vec_Str_t * vConfigs2, If_Man_t * pIfMan, word * p
             Vec_StrPush( vConfigs2, (char)(Truth1 & 0xFF) );
             Vec_StrPush( vConfigs2, (char)((Truth2 >> 8) & 0xFF) );
             Vec_StrPush( vConfigs2, (char)(Truth2 & 0xFF) );
-            assert( startPos + 12 == Vec_StrSize(vConfigs2) );
+            assert( startPos + pCellLib->pCellRecordSizes[CellId] == Vec_StrSize(vConfigs2) );
         }
         else // 14 bytes = 1 byte CellId + 9 bytes mapping + 4 bytes truth tables
         {
@@ -2231,7 +2253,7 @@ void Gia_ManFromIfGetConfig2( Vec_Str_t * vConfigs2, If_Man_t * pIfMan, word * p
             Vec_StrPush( vConfigs2, (char)(Truth1 & 0xFF) );
             Vec_StrPush( vConfigs2, (char)((Truth2 >> 8) & 0xFF) );
             Vec_StrPush( vConfigs2, (char)(Truth2 & 0xFF) );
-            assert( startPos + 14 == Vec_StrSize(vConfigs2) );
+            assert( startPos + pCellLib->pCellRecordSizes[CellId] == Vec_StrSize(vConfigs2) );
         }
     }
     if ( pIfMan->pPars->fVerboseTrace ) 
@@ -2978,6 +3000,20 @@ Gia_Man_t * Gia_ManPerformMappingInt( Gia_Man_t * p, If_Par_t * pPars )
             pPars->pTimesReq[i] = EntryF;
     }
 */
+    if ( p->pManTime && pPars->pTimesArr == NULL )
+    {
+        Tim_Man_t * pManTime = (Tim_Man_t *)p->pManTime;
+        pPars->pTimesArr = ABC_CALLOC( float, Gia_ManCiNum(p) );
+        for ( i = 0; i < Gia_ManCiNum(p); i++ )
+            pPars->pTimesArr[i] = Tim_ManGetCiArrival( pManTime, i );
+    }
+    if ( p->pManTime && pPars->pTimesReq == NULL )
+    {
+        Tim_Man_t * pManTime = (Tim_Man_t *)p->pManTime;
+        pPars->pTimesReq = ABC_CALLOC( float, Gia_ManCoNum(p) );
+        for ( i = 0; i < Gia_ManCoNum(p); i++ )
+            pPars->pTimesReq[i] = Tim_ManGetCoRequired( pManTime, i );
+    }
     ABC_FREE( p->pCellStr );
     Vec_IntFreeP( &p->vConfigs );
     Vec_StrFreeP( &p->vConfigs2 );

@@ -203,6 +203,7 @@ struct If_LibCell_t_
     char *             pName;         // the name of the LUT library
     int                nCellNum;      // the number of cells in the library
     int                nCellInputs[IF_MAX_LUTSIZE];
+    int                pCellRecordSizes[IF_MAX_LUTSIZE];
     char *             pCellNames[IF_MAX_LUTSIZE];
     float              pCellAreas[IF_MAX_LUTSIZE];
     int                pCellPinDelays[IF_MAX_LUTSIZE][IF_MAX_LUTSIZE];
@@ -753,4 +754,3 @@ ABC_NAMESPACE_HEADER_END
 ////////////////////////////////////////////////////////////////////////
 ///                       END OF FILE                                ///
 ////////////////////////////////////////////////////////////////////////
-

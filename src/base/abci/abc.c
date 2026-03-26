@@ -51413,7 +51413,7 @@ int Abc_CommandAbc9SProve( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     Gia_Man_t * pGiaUse = pAbc->pGia, * pGiaTemp = NULL;
     Wlc_Ntk_t * pWlc = (Wlc_Ntk_t *)pAbc->pAbcWlc;
-    int c, nProcs = 6, nTimeOut = 3, nTimeOut2 = 10, nTimeOut3 = 100, fUseUif = 0, fVerbose = 0, fVeryVerbose = 0, fSilent = 0;
+    int c, nProcs = 6, nProcsNew = 0, nTimeOut = 3, nTimeOut2 = 10, nTimeOut3 = 100, fUseUif = 0, fVerbose = 0, fVeryVerbose = 0, fSilent = 0;
     Extra_UtilGetoptReset();
     while ( ( c = Extra_UtilGetopt( argc, argv, "PTUWusvwh" ) ) != EOF )
     {
@@ -51425,10 +51425,11 @@ int Abc_CommandAbc9SProve( Abc_Frame_t * pAbc, int argc, char ** argv )
                 Abc_Print( -1, "Command line switch \"-P\" should be followed by a positive integer.\n" );
                 goto usage;
             }
-            nProcs = atoi(argv[globalUtilOptind]);
+            nProcsNew = atoi(argv[globalUtilOptind]);
             globalUtilOptind++;
-            if ( nProcs <= 0 )
+            if ( nProcsNew <= 0 || nProcsNew > 6 )
                 goto usage;
+            nProcs = nProcsNew;
             break;
         case 'T':
             if ( globalUtilOptind >= argc )
@@ -51526,7 +51527,7 @@ int Abc_CommandAbc9SProve( Abc_Frame_t * pAbc, int argc, char ** argv )
 usage:
     Abc_Print( -2, "usage: &sprove [-PTUW num] [-usvwh]\n" );
     Abc_Print( -2, "\t         proves CEC problem by case-splitting\n" );
-    Abc_Print( -2, "\t-P num : the number of concurrent processes [default = %d]\n",          nProcs );
+    Abc_Print( -2, "\t-P num : the number of concurrent processes (1 <= num <= 6) [default = %d]\n", nProcs );
     Abc_Print( -2, "\t-T num : runtime limit in seconds per subproblem [default = %d]\n",     nTimeOut );
     Abc_Print( -2, "\t-U num : runtime limit in seconds per subproblem [default = %d]\n",     nTimeOut2 );
     Abc_Print( -2, "\t-W num : runtime limit in seconds per subproblem [default = %d]\n",     nTimeOut3 );
