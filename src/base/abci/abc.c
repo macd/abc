@@ -42600,7 +42600,7 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
-static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModule, char * pDefines, int * pAbc_ReadAigerOrVerilogFileStatus )
+static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pFileName2, char * pTopModule, char * pDefines, int * pAbc_ReadAigerOrVerilogFileStatus )
 {
     FILE * pFile;
     Gia_Man_t * pGia;
@@ -42631,14 +42631,20 @@ static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModu
     fVerilog = fSystemVerilog || Extra_FileIsType( pFileName, ".v", NULL, NULL );
     if ( fVerilog )
     {
+        extern Aig_Man_t * Abc_NtkToDar( Abc_Ntk_t * pNtk, int fExors, int fRegisters );
+        Aig_Man_t * pAig = NULL;
         char pCommand[2000];
         int RetValue;
+        int fSystemVerilog2 = pFileName2 && Extra_FileIsType( pFileName2, ".sv", NULL, NULL );
         // Save the original filename before changing it
         pOrigFileName = pFileName;
         snprintf( pCommand, sizeof(pCommand),
-            "yosys -qp \"read_verilog %s%s %s%s; hierarchy %s%s; flatten; proc; opt; async2sync; opt; setundef -undriven -zero; techmap; memory -nomap; memory_map; dffunmap; opt_clean; opt_expr; aigmap; write_aiger -symbols _temp_.aig\"",
+            "yosys -qp \"read_verilog %s%s %s%s%s%s; hierarchy %s%s; flatten; proc; opt; async2sync; opt; setundef -undriven -zero; techmap; memory -nomap; memory_map; dffunmap; opt_clean; opt_expr; %saigmap; write_aiger -symbols _temp_.aig\"",
             pDefines ? "-D" : "", pDefines ? pDefines : "",
-            fSystemVerilog ? "-sv " : "", pFileName, pTopModule ? "-top "    : "-auto-top", pTopModule ? pTopModule : "" );
+            (fSystemVerilog || fSystemVerilog2) ? "-sv " : "", pFileName,
+            pFileName2 ? " " : "", pFileName2 ? pFileName2 : "",
+            pTopModule ? "-top "    : "-auto-top", pTopModule ? pTopModule : "",
+            pFileName2 ? "delete t:\\$scopeinfo; " : "" );
 #if defined(__wasm)
         RetValue = 1;
 #else
@@ -42649,10 +42655,32 @@ static Gia_Man_t * Abc_ReadAigerOrVerilogFile( char * pFileName, char * pTopModu
             Abc_Print( -1, "Yosys command failed: \"%s\".\n", pCommand );
             return NULL;
         }
-        pFileName = "_temp_.aig";
+        if ( pFileName2 )
+        {
+            Abc_Ntk_t * pNtk = Io_Read( "_temp_.aig", IO_FILE_AIGER, 1, 0 );
+            if ( pNtk == NULL )
+            {
+                Abc_Print( -1, "Reading AIGER from file \"%s\" has failed.\n", "_temp_.aig" );
+                return NULL;
+            }
+            pAig = Abc_NtkToDar( pNtk, 0, 1 );
+            Abc_NtkDelete( pNtk );
+            if ( pAig == NULL )
+            {
+                Abc_Print( -1, "Converting the AIGER network into an internal AIG has failed.\n" );
+                return NULL;
+            }
+            pGia = Gia_ManFromAig( pAig );
+            Aig_ManStop( pAig );
+        }
+        else
+        {
+            pFileName = "_temp_.aig";
+            pGia = Gia_AigerRead( pFileName, 0, 0, 0 );
+        }
     }
-
-    pGia = Gia_AigerRead( pFileName, 0, 0, 0 );
+    else
+        pGia = Gia_AigerRead( pFileName, 0, 0, 0 );
     if ( pGia == NULL )
     {
         Abc_Print( -1, "Reading AIGER from file \"%s\" has failed.\n", pFileName );
@@ -42684,13 +42712,14 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     extern void Cec_ManPrintCexSummary( Gia_Man_t * p, Abc_Cex_t * pCex, Cec_ParCec_t * pPars );
     Cec_ParCec_t ParsCec, * pPars = &ParsCec;
+    FILE * pFile;
     Gia_Man_t * pGias[2] = {NULL, NULL}, * pMiter;
-    char ** pArgvNew, * pTopModule = NULL, * pDefines = NULL;
+    char ** pArgvNew, * pTopModule = NULL, * pDefines = NULL, * pFileName2 = NULL;
     int c, nArgcNew, fUseSim = 0, fUseNewX = 0, fUseNewY = 0, fMiter = 0, fDualOutput = 0, fDumpMiter = 0, fSavedSpec = 0;
     int Abc_ReadAigerOrVerilogFileStatus = 0;
     Cec_ManCecSetDefaultParams( pPars );
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "CTMDnmdbasxytvwh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "CTMDFnmdbasxytvwh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -42732,6 +42761,15 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
                 goto usage;
             }
             pDefines = argv[globalUtilOptind];
+            globalUtilOptind++;
+            break;
+        case 'F':
+            if ( globalUtilOptind >= argc )
+            {
+                Abc_Print( -1, "Command line switch \"-F\" should be followed by a file name.\n" );
+                goto usage;
+            }
+            pFileName2 = argv[globalUtilOptind];
             globalUtilOptind++;
             break;
         case 'n':
@@ -42777,6 +42815,15 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
     {
         Abc_Print( 0, "It looks like the current AIG is derived by &st -m.  Such AIG contains XOR gates and cannot be verified before &st is applied.\n" );
         return 1;
+    }
+    if ( pFileName2 )
+    {
+        if ( (pFile = fopen( pFileName2, "r" )) == NULL )
+        {
+            Abc_Print( -1, "Cannot open input file \"%s\".\n", pFileName2 );
+            return 1;
+        }
+        fclose( pFile );
     }
     pArgvNew = argv + globalUtilOptind;
     nArgcNew = argc - globalUtilOptind;
@@ -42855,7 +42902,7 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
         int n;
         for ( n = 0; n < 2; n++ )
         {
-            pGias[n] = Abc_ReadAigerOrVerilogFile( pFileNames[n], pTopModule, pDefines, &Abc_ReadAigerOrVerilogFileStatus );
+            pGias[n] = Abc_ReadAigerOrVerilogFile( pFileNames[n], pFileName2, pTopModule, pDefines, &Abc_ReadAigerOrVerilogFileStatus );
             if ( pGias[n] == NULL )
                 return Abc_ReadAigerOrVerilogFileStatus;
         }
@@ -42891,7 +42938,7 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
             }
             FileName = pAbc->pGia->pSpec;
         }
-        pGias[1] = Abc_ReadAigerOrVerilogFile( FileName, pTopModule, pDefines, &Abc_ReadAigerOrVerilogFileStatus );
+        pGias[1] = Abc_ReadAigerOrVerilogFile( FileName, pFileName2, pTopModule, pDefines, &Abc_ReadAigerOrVerilogFileStatus );
         if ( pGias[1] == NULL )
             return Abc_ReadAigerOrVerilogFileStatus;
     }
@@ -43003,12 +43050,13 @@ int Abc_CommandAbc9Cec( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &cec [-CT num] [-M str] [-D str] [-nmdbasxytvwh]\n" );
+    Abc_Print( -2, "usage: &cec [-CT num] [-M str] [-D str] [-F str] [-nmdbasxytvwh]\n" );
     Abc_Print( -2, "\t         new combinational equivalence checker\n" );
     Abc_Print( -2, "\t-C num : the max number of conflicts at a node [default = %d]\n", pPars->nBTLimit );
     Abc_Print( -2, "\t-T num : approximate runtime limit in seconds [default = %d]\n", pPars->TimeLimit );
     Abc_Print( -2, "\t-M str : top module name if Verilog file(s) are used [default = \"not used\"]\n" );
     Abc_Print( -2, "\t-D str : defines to be used by Yosys for Verilog files [default = \"not used\"]\n" );
+    Abc_Print( -2, "\t-F str : second Verilog/SystemVerilog file read together with each Verilog input [default = \"not used\"]\n" );
     Abc_Print( -2, "\t-n     : toggle using naive SAT-based checking [default = %s]\n", pPars->fNaive? "yes":"no");
     Abc_Print( -2, "\t-m     : toggle miter vs. two circuits [default = %s]\n", fMiter? "miter":"two circuits");
     Abc_Print( -2, "\t-d     : toggle using dual output miter [default = %s]\n", fDualOutput? "yes":"no");
