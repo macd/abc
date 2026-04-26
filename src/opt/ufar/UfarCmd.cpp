@@ -38,7 +38,15 @@ typedef struct Ufar_StopCtx_t_
     int fActive;
     timeval TimeStart;
 } Ufar_StopCtx_t;
+#if defined(_MSC_VER)
+__declspec(thread) static Ufar_StopCtx_t g_UfarStopCtx = { NULL, 0, 0, {0, 0} };
+#elif defined(__cplusplus) && __cplusplus >= 201103L
+static thread_local Ufar_StopCtx_t g_UfarStopCtx = { NULL, 0, 0, {0, 0} };
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+static _Thread_local Ufar_StopCtx_t g_UfarStopCtx = { NULL, 0, 0, {0, 0} };
+#else
 static __thread Ufar_StopCtx_t g_UfarStopCtx = { NULL, 0, 0, {0, 0} };
+#endif
 
 static int Abc_CommandTest( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandAnalyzeCex( Abc_Frame_t * pAbc, int argc, char ** argv );
