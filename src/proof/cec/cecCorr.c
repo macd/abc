@@ -762,6 +762,7 @@ void Cec_ManRefinedClassPrintStats( Gia_Man_t * p, Vec_Str_t * vStatus, int iIte
     Abc_Print( 1, "p =%6d  d =%6d  f =%6d  ", nProve, nDispr, nFail );
     Abc_Print( 1, "%c  ", Gia_ObjIsConst( p, Gia_ObjFaninId0p(p, Gia_ManPo(p, 0)) ) ? '+' : '-' );
     Abc_PrintTime( 1, "T", Time );
+    fflush( stdout );
 }
 int Cec_ManCountLits( Gia_Man_t * p )
 { 
@@ -994,6 +995,7 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
     if ( pPars->nStepsMax == 0 )
     {
         Abc_Print( 1, "Stopped signal correspondence after BMC.\n" );
+        fflush( stdout );
         Cec_ManSimStop( pSim );
         return 1;
     }
@@ -1009,6 +1011,7 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
         {
             Cec_ManSimStop( pSim );
             Abc_Print( 1, "Stopped signal correspondence after %d refiment iterations.\n", r );
+            fflush( stdout );
             return 1;
         }
         clk = Abc_Clock();
@@ -1062,6 +1065,7 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
         {
             printf( "Iterative refinement is stopped after iteration %d\n", r );
             printf( "because the property output is no longer a candidate constant.\n" );
+            fflush( stdout );
             Cec_ManSimStop( pSim );
             return 0;
         }
@@ -1072,6 +1076,7 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
             {
                 printf( "Iterative refinement is stopped after iteration %d\n", r );
                 printf( "because refinement does not proceed quickly.\n" );
+                fflush( stdout );
                 Cec_ManSimStop( pSim );
                 ABC_FREE( pAig->pReprs );
                 ABC_FREE( pAig->pNexts );
@@ -1101,6 +1106,7 @@ int Cec_ManLSCorrespondenceClasses( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
         ABC_PRTP( "Sim  ", clkSim,                        clkTotal );
         ABC_PRTP( "Other", clkTotal-clkSat-clkSrm-clkSim, clkTotal );
         Abc_PrintTime( 1, "TOTAL",  clkTotal );
+        fflush( stdout );
     }
     return 1;
 }    
@@ -1299,42 +1305,107 @@ Gia_Man_t * Cec_ManLSCorrespondence( Gia_Man_t * pAig, Cec_ParCor_t * pPars )
   SeeAlso     []
 
 ***********************************************************************/
-Vec_Wec_t * Gia_ManCreateRegSupps( Gia_Man_t * p, int fVerbose )
+static inline void Gia_ManStopFlopSuppAdd( int * pReg0, int * pReg1, int * pnRegs, int Reg )
 {
-    abctime clk = Abc_Clock();
-    Gia_Obj_t * pObj; int i, Id;
-    Vec_Wec_t * vSuppsR = Vec_WecStart( Gia_ManRegNum(p) );
-    Vec_Wec_t * vSupps  = Vec_WecStart( Gia_ManObjNum(p) );
-    Gia_ManForEachRo( p, pObj, i )
-        Vec_IntPush( Vec_WecEntry(vSupps, Gia_ObjId(p, pObj)), i );
-    Gia_ManForEachAnd( p, pObj, Id )
-        Vec_IntTwoMerge2( Vec_WecEntry(vSupps, Gia_ObjFaninId0(pObj, Id)), 
-                          Vec_WecEntry(vSupps, Gia_ObjFaninId1(pObj, Id)), 
-                          Vec_WecEntry(vSupps, Id) ); 
-    Gia_ManForEachRi( p, pObj, i )
-        Vec_IntAppend( Vec_WecEntry(vSuppsR, i), Vec_WecEntry(vSupps, Gia_ObjFaninId0p(p, pObj)) );
-    Vec_WecFree( vSupps );
-    if ( fVerbose )
-        Abc_PrintTime( 1, "Support computation", Abc_Clock() - clk );
-    return vSuppsR;
+    if ( *pnRegs == 3 )
+        return;
+    if ( *pnRegs == 0 )
+    {
+        *pReg0 = Reg;
+        *pnRegs = 1;
+        return;
+    }
+    if ( *pnRegs == 1 )
+    {
+        if ( *pReg0 == Reg )
+            return;
+        *pReg1 = Reg;
+        *pnRegs = 2;
+        return;
+    }
+    assert( *pnRegs == 2 );
+    if ( *pReg0 == Reg || *pReg1 == Reg )
+        return;
+    *pnRegs = 3;
 }
 Vec_Int_t * Gia_ManFindStopFlops( Gia_Man_t * p, int nFlopIncFreq, int fVerbose )
 {
-    Vec_Int_t * vRes = NULL, * vTemp;  int i, k, Spot, Temp, nItems = 0;
-    Vec_Wec_t * vSupps = Gia_ManCreateRegSupps( p, fVerbose );
+    abctime clk = Abc_Clock();
+    Gia_Obj_t * pObj;
+    Vec_Int_t * vRes = NULL;
     Vec_Int_t * vNexts = Vec_IntStartFull( Gia_ManRegNum(p) );
     Vec_Int_t * vAvail = Vec_IntStart( Gia_ManRegNum(p) );
     Vec_Int_t * vHeads = Vec_IntAlloc( 10 );
-    Vec_WecForEachLevel( vSupps, vTemp, i ) {
-        if ( Vec_IntSize(vTemp) > 2 )
-            continue;
-        if ( (Spot = Vec_IntFind(vTemp, i)) >= 0 )
-            Vec_IntDrop( vTemp, Spot );
-        if ( Vec_IntSize(vTemp) != 1 )
-            continue;
-        Vec_IntWriteEntry( vNexts, i, Vec_IntEntry(vTemp, 0) );
-        Vec_IntWriteEntry( vAvail, Vec_IntEntry(vTemp, 0), 1 );
+    unsigned char * pSuppN = ABC_CALLOC( unsigned char, Gia_ManObjNum(p) );
+    int * pSupp0 = ABC_ALLOC( int, Gia_ManObjNum(p) );
+    int * pSupp1 = ABC_ALLOC( int, Gia_ManObjNum(p) );
+    int i, k, Id, Fan0, Fan1, Count, Next, Spot, Temp, nItems = 0;
+
+    // Track at most two distinct flop supports per node; value 3 means "many".
+    Gia_ManForEachRo( p, pObj, i )
+    {
+        Id = Gia_ObjId( p, pObj );
+        pSuppN[Id] = 1;
+        pSupp0[Id] = i;
     }
+    Gia_ManForEachAnd( p, pObj, Id )
+    {
+        int Reg0 = -1, Reg1 = -1, nRegs = 0;
+        Fan0 = Gia_ObjFaninId0( pObj, Id );
+        Fan1 = Gia_ObjFaninId1( pObj, Id );
+        if ( pSuppN[Fan0] == 3 || pSuppN[Fan1] == 3 )
+        {
+            pSuppN[Id] = 3;
+            continue;
+        }
+        if ( pSuppN[Fan0] > 0 )
+        {
+            Gia_ManStopFlopSuppAdd( &Reg0, &Reg1, &nRegs, pSupp0[Fan0] );
+            if ( pSuppN[Fan0] > 1 )
+                Gia_ManStopFlopSuppAdd( &Reg0, &Reg1, &nRegs, pSupp1[Fan0] );
+        }
+        if ( pSuppN[Fan1] > 0 )
+        {
+            Gia_ManStopFlopSuppAdd( &Reg0, &Reg1, &nRegs, pSupp0[Fan1] );
+            if ( pSuppN[Fan1] > 1 )
+                Gia_ManStopFlopSuppAdd( &Reg0, &Reg1, &nRegs, pSupp1[Fan1] );
+        }
+        pSuppN[Id] = nRegs;
+        if ( nRegs > 0 )
+            pSupp0[Id] = Reg0;
+        if ( nRegs > 1 )
+            pSupp1[Id] = Reg1;
+    }
+    if ( fVerbose )
+    {
+        Abc_PrintTime( 1, "Support computation", Abc_Clock() - clk );
+        fflush( stdout );
+    }
+
+    Gia_ManForEachRi( p, pObj, i )
+    {
+        Id = Gia_ObjFaninId0p( p, pObj );
+        Count = pSuppN[Id];
+        Next = -1;
+        if ( Count == 1 )
+            Next = pSupp0[Id] == i ? -1 : pSupp0[Id];
+        else if ( Count == 2 )
+        {
+            if ( pSupp0[Id] == i && pSupp1[Id] != i )
+                Next = pSupp1[Id];
+            else if ( pSupp1[Id] == i && pSupp0[Id] != i )
+                Next = pSupp0[Id];
+        }
+        if ( Next >= 0 )
+        {
+            Vec_IntWriteEntry( vNexts, i, Next );
+            Vec_IntWriteEntry( vAvail, Next, 1 );
+        }
+    }
+    ABC_FREE( pSuppN );
+    ABC_FREE( pSupp0 );
+    ABC_FREE( pSupp1 );
+
     Vec_IntForEachEntry( vNexts, Spot, i )
         if ( Spot >= 0 && Vec_IntEntry(vAvail, i) == 0 )
             Vec_IntPush( vHeads, i );
@@ -1366,11 +1437,13 @@ Vec_Int_t * Gia_ManFindStopFlops( Gia_Man_t * p, int nFlopIncFreq, int fVerbose 
         }
     }
     if ( fVerbose && vRes ) 
+    {
         printf( "Detected %d sequence%s containing %d flops.\n", nItems, nItems > 1 ? "s":"", Vec_IntSize(vRes) );
+        fflush( stdout );
+    }
     Vec_IntFree( vNexts );
     Vec_IntFree( vAvail );
     Vec_IntFree( vHeads );
-    Vec_WecFree( vSupps );
     return vRes;
 }
 Gia_Man_t * Gia_ManDupStopsAdd( Gia_Man_t * p, Vec_Int_t * vStops )
