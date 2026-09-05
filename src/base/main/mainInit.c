@@ -53,10 +53,8 @@ extern void Wlc_Init( Abc_Frame_t * pAbc );
 extern void Wlc_End( Abc_Frame_t * pAbc );
 extern void Wln_Init( Abc_Frame_t * pAbc );
 extern void Wln_End( Abc_Frame_t * pAbc );
-extern void Bac_Init( Abc_Frame_t * pAbc );
-extern void Bac_End( Abc_Frame_t * pAbc );
-extern void Cba_Init( Abc_Frame_t * pAbc );
-extern void Cba_End( Abc_Frame_t * pAbc );
+extern void Sn_Init( Abc_Frame_t * pAbc );
+extern void Sn_End( Abc_Frame_t * pAbc );
 extern void Pla_Init( Abc_Frame_t * pAbc );
 extern void Pla_End( Abc_Frame_t * pAbc );
 extern void Sim_Init( Abc_Frame_t * pAbc );
@@ -73,6 +71,8 @@ extern void Glucose2_Init( Abc_Frame_t *pAbc );
 extern void Glucose2_End( Abc_Frame_t * pAbc );
 extern void Ufar_Init(Abc_Frame_t *pAbc);
 
+// Initializers are registered during single-threaded process startup and are
+// immutable after the first frame is created.
 static Abc_FrameInitializer_t* s_InitializerStart = NULL;
 static Abc_FrameInitializer_t* s_InitializerEnd = NULL;
 
@@ -123,8 +123,7 @@ void Abc_FrameInit( Abc_Frame_t * pAbc )
     Emap_Init( pAbc );
     Wlc_Init( pAbc );
     Wln_Init( pAbc );
-    Bac_Init( pAbc );
-    Cba_Init( pAbc );
+    Sn_Init( pAbc );
     Pla_Init( pAbc );
     Test_Init( pAbc );
     Ufar_Init( pAbc );
@@ -166,8 +165,7 @@ void Abc_FrameEnd( Abc_Frame_t * pAbc )
     Scl_End( pAbc );
     Wlc_End( pAbc );
     Wln_End( pAbc );
-    Bac_End( pAbc );
-    Cba_End( pAbc );
+    Sn_End( pAbc );
     Pla_End( pAbc );
     Test_End( pAbc );
     Glucose_End( pAbc );
@@ -180,4 +178,3 @@ void Abc_FrameEnd( Abc_Frame_t * pAbc )
 
 
 ABC_NAMESPACE_IMPL_END
-

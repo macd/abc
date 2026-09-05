@@ -35,7 +35,7 @@ OS := $(shell uname -s)
 MODULES := \
 	$(wildcard src/ext*) \
 	src/base/abc src/base/abci src/base/cmd src/base/io src/base/main src/base/exor \
-	src/base/ver src/base/wlc src/base/wln src/base/acb src/base/bac src/base/cba src/base/pla src/base/test \
+	src/base/ver src/base/wlc src/base/wln src/base/sn src/base/acb src/base/pla src/base/test \
 	src/map/mapper src/map/mio src/map/super src/map/if src/map/if/acd \
 	src/map/amap src/map/cov src/map/scl src/map/mpm src/map/emap \
 	src/misc/extra src/misc/mvc src/misc/st src/misc/util src/misc/nm \
@@ -111,6 +111,12 @@ ifndef ABC_USE_NO_PTHREADS
   CFLAGS += -DABC_USE_PTHREADS
   LIBS += -lpthread
   $(call abc_info,$(MSG_PREFIX)Using pthreads)
+endif
+
+# whether to compile without thread-local frame selection
+ifdef ABC_USE_NO_THREAD_LOCAL
+  CFLAGS += -DABC_USE_NO_THREAD_LOCAL=1
+  $(call abc_info,$(MSG_PREFIX)Disabling thread-local frame selection)
 endif
 
 # whether to compile into position independent code
