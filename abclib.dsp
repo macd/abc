@@ -1137,6 +1137,50 @@ SOURCE=.\src\base\sn\snMux.h
 
 SOURCE=.\src\base\sn\snCom.c
 # End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snExpr.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snLiberty.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snLibrary.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snSeq.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snMio.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snNtk.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snStitch.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snMapCell.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snMapDff.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snMapFf.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\base\sn\snClock.h
+# End Source File
 # End Group
 # End Group
 # Begin Group "bdd"
@@ -6996,6 +7040,46 @@ SOURCE=.\src\proof\live\monotone.c
 # Begin Group "pdr"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipAnalyze.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipCdb.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipDomain.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipMain.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipMan.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipProp.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipSearch.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipSimp.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipVsids.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\proof\pdr\gipsat\gipsat.h
+# End Source File
 # Begin Source File
 
 SOURCE=.\src\proof\pdr\pdr.h
