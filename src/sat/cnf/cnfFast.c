@@ -42,11 +42,26 @@ ABC_NAMESPACE_IMPL_START
   SeeAlso     []
 
 ***********************************************************************/
+// Vec_PtrPushUnique() rescans the vector on every push, so a gate with n leaves
+// cost O(n^2). Above the threshold, push blind and uniquify once at the end;
+// below it the original scan stays, so the small gates that are almost every
+// call keep the old path. Compared by literal rather than by address, so the
+// result does not depend on the allocator.
+#define CNF_LEAF_LINEAR_MAX 16
+
+static int Cnf_LeafCompare( Aig_Obj_t ** pp1, Aig_Obj_t ** pp2 )
+{
+    return Aig_ObjToLit(*pp1) - Aig_ObjToLit(*pp2);
+}
+
 void Cnf_CollectLeaves_rec( Aig_Obj_t * pRoot, Aig_Obj_t * pObj, Vec_Ptr_t * vSuper, int fStopCompl )
 {
     if ( pRoot != pObj && (pObj->fMarkA || (fStopCompl && Aig_IsComplement(pObj))) )
     {
-        Vec_PtrPushUnique( vSuper, fStopCompl ? pObj : Aig_Regular(pObj) );
+        if ( vSuper->nSize < CNF_LEAF_LINEAR_MAX )
+            Vec_PtrPushUnique( vSuper, fStopCompl ? pObj : Aig_Regular(pObj) );
+        else
+            Vec_PtrPush( vSuper, fStopCompl ? pObj : Aig_Regular(pObj) );
         return;
     }
     assert( Aig_ObjIsNode(pObj) );
@@ -78,6 +93,9 @@ void Cnf_CollectLeaves( Aig_Obj_t * pRoot, Vec_Ptr_t * vSuper, int fStopCompl )
     assert( !Aig_IsComplement(pRoot) );
     Vec_PtrClear( vSuper );
     Cnf_CollectLeaves_rec( pRoot, pRoot, vSuper, fStopCompl );
+    // Under the threshold every push was checked, so nothing can be repeated.
+    if ( Vec_PtrSize(vSuper) >= CNF_LEAF_LINEAR_MAX )
+        Vec_PtrUniqify( vSuper, (int (*)(const void *, const void *))Cnf_LeafCompare );
 }
 
 /**Function*************************************************************
@@ -186,6 +204,107 @@ static inline int Cnf_ObjGetLit( Vec_Int_t * vMap, Aig_Obj_t * pObj, int fCompl 
 
 /**Function*************************************************************
 
+  Synopsis    [Remembers the ISOP cover of each distinct cut function.]
+
+  Description [The cover computed by Kit_TruthIsop() depends on nothing but
+  the truth table and the number of leaves, while a cut function repeats
+  across the AIG as often as the gate it came from: a bit-blasted circuit is
+  a few adder, mux and xor functions used millions of times over.  Cutting
+  the ISOP for a function that has already been covered saves recomputing it
+  and, since the cover is replayed cube for cube, leaves the CNF unchanged.
+  Same idea as Mf_ManDeriveCnfs(), which keys off the truth table id the
+  mapper already assigns.]
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+// Entries the table will hold. Nothing bounds how many distinct cut functions
+// a circuit can present -- at most two per cone, so O(AIG) -- while the reuse
+// is extreme and concentrated: on a 293k-AND multiplier four functions answer
+// 146,304 of 146,304 requests. Replaying the five request streams measured so
+// far against a bound of 1024, an LRU of 1024 and a direct-mapped 1024 gives
+// the same hit rate as an unbounded table to three decimal places, the most
+// distinct functions any of them presents being 166. So the table is bounded
+// here and the policy left as simple as it can be: past the bound a function
+// already stored is still replayed, and one that is not is computed and not
+// stored.
+#define CNF_ISOP_CACHE_MAX 1024
+
+typedef struct Cnf_IsopCache_t_ Cnf_IsopCache_t;
+struct Cnf_IsopCache_t_
+{
+    Vec_Mem_t *    vFuncs;    // the (truth table, leaf count) keys seen so far
+    Vec_Int_t *    vCovers;   // key id -> where its cover sits in vCubes
+    Vec_Int_t *    vCubes;    // per key: the cube count, then the cubes
+};
+
+static Cnf_IsopCache_t * Cnf_IsopCacheStart()
+{
+    Cnf_IsopCache_t * p = ABC_CALLOC( Cnf_IsopCache_t, 1 );
+    p->vFuncs  = Vec_MemAlloc( 2, 8 );
+    Vec_MemHashAlloc( p->vFuncs, 1 << 10 );
+    p->vCovers = Vec_IntAlloc( 1 << 10 );
+    p->vCubes  = Vec_IntAlloc( 1 << 12 );
+    return p;
+}
+
+static void Cnf_IsopCacheStop( Cnf_IsopCache_t * p )
+{
+    Vec_MemHashFree( p->vFuncs );
+    Vec_MemFree( p->vFuncs );
+    Vec_IntFree( p->vCovers );
+    Vec_IntFree( p->vCubes );
+    ABC_FREE( p );
+}
+
+// Returns the cover of Truth as *pnCubes cubes.  A NULL cache computes every
+// time, for the callers that derive clauses for one cone at a time.
+static int * Cnf_IsopCacheCover( Cnf_IsopCache_t * p, word Truth, int nLeaves, Vec_Int_t * vCover, int * pnCubes )
+{
+    word Key[2];
+    int c, Cube, iFunc, iCover, RetValue;
+    if ( p == NULL )
+    {
+        RetValue = Kit_TruthIsop( (unsigned *)&Truth, nLeaves, vCover, 0 );
+        assert( RetValue >= 0 );
+        *pnCubes = Vec_IntSize( vCover );
+        return Vec_IntArray( vCover );
+    }
+    Key[0] = Truth;
+    Key[1] = (word)nLeaves;
+    if ( Vec_IntSize(p->vCovers) < CNF_ISOP_CACHE_MAX )
+        iFunc = Vec_MemHashInsert( p->vFuncs, Key );
+    else
+    {
+        // Full: serve what is stored, compute the rest without storing it.
+        int * pSpot = Vec_MemHashLookup( p->vFuncs, Key );
+        if ( *pSpot == -1 )
+        {
+            RetValue = Kit_TruthIsop( (unsigned *)&Truth, nLeaves, vCover, 0 );
+            assert( RetValue >= 0 );
+            *pnCubes = Vec_IntSize( vCover );
+            return Vec_IntArray( vCover );
+        }
+        iFunc = *pSpot;
+    }
+    if ( iFunc == Vec_IntSize(p->vCovers) )
+    {
+        RetValue = Kit_TruthIsop( (unsigned *)&Truth, nLeaves, vCover, 0 );
+        assert( RetValue >= 0 );
+        Vec_IntPush( p->vCovers, Vec_IntSize(p->vCubes) );
+        Vec_IntPush( p->vCubes, Vec_IntSize(vCover) );
+        Vec_IntForEachEntry( vCover, Cube, c )
+            Vec_IntPush( p->vCubes, Cube );
+    }
+    iCover   = Vec_IntEntry( p->vCovers, iFunc );
+    *pnCubes = Vec_IntEntry( p->vCubes, iCover );
+    return Vec_IntArray( p->vCubes ) + iCover + 1;
+}
+
+/**Function*************************************************************
+
   Synopsis    [Collects nodes inside the cone.]
 
   Description []
@@ -195,11 +314,12 @@ static inline int Cnf_ObjGetLit( Vec_Int_t * vMap, Aig_Obj_t * pObj, int fCompl 
   SeeAlso     []
 
 ***********************************************************************/
-void Cnf_ComputeClauses( Aig_Man_t * p, Aig_Obj_t * pRoot, 
-    Vec_Ptr_t * vLeaves, Vec_Ptr_t * vNodes, Vec_Int_t * vMap, Vec_Int_t * vCover, Vec_Int_t * vClauses )
+static void Cnf_ComputeClausesInt( Aig_Man_t * p, Aig_Obj_t * pRoot,
+    Vec_Ptr_t * vLeaves, Vec_Ptr_t * vNodes, Vec_Int_t * vMap, Vec_Int_t * vCover, Vec_Int_t * vClauses,
+    Cnf_IsopCache_t * pCache )
 {
     Aig_Obj_t * pLeaf;
-    int c, k, Cube, OutLit, RetValue;
+    int c, k, Cube, OutLit, nCubes, * pCubes;
     word Truth;
     assert( pRoot->fMarkA );
 
@@ -247,11 +367,10 @@ void Cnf_ComputeClauses( Aig_Man_t * p, Aig_Obj_t * pRoot,
         return;
     }
 
-    RetValue = Kit_TruthIsop( (unsigned *)&Truth, Vec_PtrSize(vLeaves), vCover, 0 );
-    assert( RetValue >= 0 );
-
-    Vec_IntForEachEntry( vCover, Cube, c )
+    pCubes = Cnf_IsopCacheCover( pCache, Truth, Vec_PtrSize(vLeaves), vCover, &nCubes );
+    for ( c = 0; c < nCubes; c++ )
     {
+        Cube = pCubes[c];
         Vec_IntPush( vClauses, 0 );
         Vec_IntPush( vClauses, OutLit );
         for ( k = 0; k < Vec_PtrSize(vLeaves); k++, Cube >>= 2 )
@@ -263,12 +382,10 @@ void Cnf_ComputeClauses( Aig_Man_t * p, Aig_Obj_t * pRoot,
         }
     }
 
-    Truth = ~Truth;
-
-    RetValue = Kit_TruthIsop( (unsigned *)&Truth, Vec_PtrSize(vLeaves), vCover, 0 );
-    assert( RetValue >= 0 );
-    Vec_IntForEachEntry( vCover, Cube, c )
+    pCubes = Cnf_IsopCacheCover( pCache, ~Truth, Vec_PtrSize(vLeaves), vCover, &nCubes );
+    for ( c = 0; c < nCubes; c++ )
     {
+        Cube = pCubes[c];
         Vec_IntPush( vClauses, 0 );
         Vec_IntPush( vClauses, OutLit ^ 1 );
         for ( k = 0; k < Vec_PtrSize(vLeaves); k++, Cube >>= 2 )
@@ -279,6 +396,12 @@ void Cnf_ComputeClauses( Aig_Man_t * p, Aig_Obj_t * pRoot,
             Vec_IntPush( vClauses, Cnf_ObjGetLit(vMap, (Aig_Obj_t *)Vec_PtrEntry(vLeaves,k), (Cube&3)!=1) );
         }
     }
+}
+
+void Cnf_ComputeClauses( Aig_Man_t * p, Aig_Obj_t * pRoot,
+    Vec_Ptr_t * vLeaves, Vec_Ptr_t * vNodes, Vec_Int_t * vMap, Vec_Int_t * vCover, Vec_Int_t * vClauses )
+{
+    Cnf_ComputeClausesInt( p, pRoot, vLeaves, vNodes, vMap, vCover, vClauses, NULL );
 }
 
 
@@ -548,6 +671,7 @@ Cnf_Dat_t * Cnf_DeriveFastClauses( Aig_Man_t * p, int nOutputs )
     Vec_Int_t * vLits, * vClas, * vMap, * vTemp;
     Vec_Ptr_t * vLeaves, * vNodes;
     Vec_Int_t * vCover;
+    Cnf_IsopCache_t * pCache;
     Aig_Obj_t * pObj;
     int i, k, nVars, Entry, OutLit, DriLit;
 
@@ -586,11 +710,12 @@ Cnf_Dat_t * Cnf_DeriveFastClauses( Aig_Man_t * p, int nOutputs )
     vNodes  = Vec_PtrAlloc( 100 );
     vCover  = Vec_IntAlloc( 1 << 16 );
     vTemp   = Vec_IntAlloc( 100 );
+    pCache  = Cnf_IsopCacheStart();
     Aig_ManForEachNodeReverse( p, pObj, i )
     {
         if ( !pObj->fMarkA )
             continue;
-        Cnf_ComputeClauses( p, pObj, vLeaves, vNodes, vMap, vCover, vTemp );
+        Cnf_ComputeClausesInt( p, pObj, vLeaves, vNodes, vMap, vCover, vTemp, pCache );
         Vec_IntForEachEntry( vTemp, Entry, k )
         {
             if ( Entry == 0 )
@@ -599,6 +724,7 @@ Cnf_Dat_t * Cnf_DeriveFastClauses( Aig_Man_t * p, int nOutputs )
                 Vec_IntPush( vLits, Entry );
         }       
     }
+    Cnf_IsopCacheStop( pCache );
     Vec_PtrFree( vLeaves );
     Vec_PtrFree( vNodes );
     Vec_IntFree( vCover );

@@ -20,6 +20,7 @@
 
 #include <inttypes.h>
 #include "base/abc/abc.h"
+#include "bool/lms/lms.h"
 #include "base/main/main.h"
 #include "base/main/mainInt.h"
 #include "proof/fraig/fraig.h"
@@ -293,6 +294,11 @@ static int Abc_CommandFraigDress             ( Abc_Frame_t * pAbc, int argc, cha
 static int Abc_CommandDumpEquiv              ( Abc_Frame_t * pAbc, int argc, char ** argv );
 
 static int Abc_CommandRecStart3              ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandRecCollect3            ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandRecGen3                ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandLmsTarget              ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandRecEmbed3              ( Abc_Frame_t * pAbc, int argc, char ** argv );
+static int Abc_CommandRecFilter3             ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandRecStop3               ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandRecPs3                 ( Abc_Frame_t * pAbc, int argc, char ** argv );
 static int Abc_CommandRecAdd3                ( Abc_Frame_t * pAbc, int argc, char ** argv );
@@ -1152,6 +1158,11 @@ void Abc_Init( Abc_Frame_t * pAbc )
     Cmd_CommandAdd( pAbc, "Fraiging",     "dump_equiv",    Abc_CommandDumpEquiv,        0 );
 
     Cmd_CommandAdd( pAbc, "Choicing",     "rec_start3",    Abc_CommandRecStart3,        0 );
+    Cmd_CommandAdd( pAbc, "Choicing",     "rec_collect3",  Abc_CommandRecCollect3,      0 );
+    Cmd_CommandAdd( pAbc, "Choicing",     "rec_gen3",      Abc_CommandRecGen3,          0 );
+    Cmd_CommandAdd( pAbc, "ABC9",         "&lms",          Abc_CommandLmsTarget,        0 );
+    Cmd_CommandAdd( pAbc, "Choicing",     "rec_embed3",    Abc_CommandRecEmbed3,        0 );
+    Cmd_CommandAdd( pAbc, "Choicing",     "rec_filter3",   Abc_CommandRecFilter3,       0 );
     Cmd_CommandAdd( pAbc, "Choicing",     "rec_stop3",     Abc_CommandRecStop3,         0 );
     Cmd_CommandAdd( pAbc, "Choicing",     "rec_ps3",       Abc_CommandRecPs3,           0 );
     Cmd_CommandAdd( pAbc, "Choicing",     "rec_add3",      Abc_CommandRecAdd3,          0 );
@@ -20783,6 +20794,8 @@ int Abc_CommandFraigDress( Abc_Frame_t * pAbc, int argc, char ** argv )
     // modify the current network
 //    Abc_NtkDress( pNtk, pFileName, fVerbose );
     pNtk2 = Io_Read( pFileName, Io_ReadFileType(pFileName), 1, 0 );
+    if ( pNtk2 == NULL )
+        return 1;
     Abc_NtkDress2( pNtk, pNtk2, nConfs, fVerbose );
     Abc_NtkDelete( pNtk2 );
     return 0;
@@ -20897,6 +20910,7 @@ usage:
 ***********************************************************************/
 int Abc_CommandRecStart3( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
+    extern void Abc_NtkRecXorMode3( void );
     char * FileName, * pTemp;
     char ** pArgvNew;
     int c, nArgcNew;
@@ -20905,9 +20919,10 @@ int Abc_CommandRecStart3( Abc_Frame_t * pAbc, int argc, char ** argv )
     int nVars = 6;
     int nCuts = 32;
     int fFuncOnly = 0;
+    int fXor = 0;
     int fVerbose = 0;
     Extra_UtilGetoptReset();
-    while ( ( c = Extra_UtilGetopt( argc, argv, "KCfvh" ) ) != EOF )
+    while ( ( c = Extra_UtilGetopt( argc, argv, "KCfxvh" ) ) != EOF )
     {
         switch ( c )
         {
@@ -20936,6 +20951,9 @@ int Abc_CommandRecStart3( Abc_Frame_t * pAbc, int argc, char ** argv )
         case 'f':
             fFuncOnly ^= 1;
             break;
+        case 'x':
+            fXor ^= 1;
+            break;
         case 'v':
             fVerbose ^= 1;
             break;
@@ -20957,6 +20975,11 @@ int Abc_CommandRecStart3( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     pArgvNew = argv + globalUtilOptind;
     nArgcNew = argc - globalUtilOptind;
+    if ( fXor && (nArgcNew != 1 || fFuncOnly) )
+    {
+        Abc_Print(-1, "rec_start3 -x requires a structure-library file and is incompatible with -f.\n");
+        return 1;
+    }
     if ( nArgcNew != 1 )
         Abc_Print( 1, "File name is not given on the command line. Starting a new record.\n" );
     else
@@ -20984,18 +21007,21 @@ int Abc_CommandRecStart3( Abc_Frame_t * pAbc, int argc, char ** argv )
         }
     }
     Abc_NtkRecStart3( pGia, nVars, nCuts, fFuncOnly, fVerbose );
+    if ( fXor ) Abc_NtkRecXorMode3();
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: rec_start3 [-K num] [-C num] [-fvh] <file>\n" );
+    Abc_Print( -2, "usage: rec_start3 [-K num] [-C num] [-fxvh] <file>\n" );
     Abc_Print( -2, "\t         starts recording AIG subgraphs (should be called for\n" );
     Abc_Print( -2, "\t         an empty network or after reading in a previous record)\n" );
     Abc_Print( -2, "\t-K num : the largest number of inputs [default = %d]\n", nVars );
     Abc_Print( -2, "\t-C num : the max number of cuts used at a node (0 < num < 2^12) [default = %d]\n", nCuts );
     Abc_Print( -2, "\t-f     : toggles recording functions without AIG subgraphs [default = %s]\n", fFuncOnly? "yes": "no" );
+    Abc_Print( -2, "\t-x     : count recognized three-AND XORs as one gate/level in LMS [default = no]\n" );
     Abc_Print( -2, "\t-v     : toggles additional verbose output [default = %s]\n", fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h     : print the command usage\n");
     Abc_Print( -2, "\t<file> : AIGER file with the library\n");
+    Abc_Print( -2, "\t         loaded structure libraries use exact winner caching by default\n");
     return 1;
 }
 
@@ -21052,6 +21078,175 @@ usage:
   SeeAlso     []
 
 ***********************************************************************/
+static int Abc_CommandRecFilter3( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern int Abc_LmsFilterControl3( int Mode, FILE * pOut );
+    int c, Mode = 1;
+    Extra_UtilGetoptReset();
+    while ( (c = Extra_UtilGetopt(argc, argv, "cdvh")) != EOF )
+    {
+        if ( c == 'd' && Mode == 1 ) Mode = 0;
+        else if ( c == 'c' && Mode == 1 ) Mode = 3;
+        else if ( c == 'v' && Mode == 1 ) Mode = 2;
+        else goto usage;
+    }
+    if ( argc != globalUtilOptind ) goto usage;
+    return Abc_LmsFilterControl3(Mode, Abc_FrameReadOut(pAbc));
+usage:
+    Abc_Print(-2, "usage: rec_filter3 [-c | -d | -v] [-h]\n");
+    Abc_Print(-2, "       Enable exact late-input filtering for the loaded LMS library.\n");
+    Abc_Print(-2, "       -d : disable filtering and caching (exact caching is on by default)\n");
+    Abc_Print(-2, "       -c : enable filtering and an empty exact winning-structure cache\n");
+    Abc_Print(-2, "       -v : print status and candidate statistics without changing mode\n");
+    Abc_Print(-2, "       Enabling resets counters; cached indexes are retained.\n");
+    return 1;
+}
+static int Abc_CommandRecCollect3( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern int Abc_LmsCollectControl3( const char * pFileName, int Mode, FILE * pError );
+    int c, Mode = 0;
+    Extra_UtilGetoptReset();
+    while ( (c = Extra_UtilGetopt(argc, argv, "rsh")) != EOF )
+    {
+        if ( c == 'r' && !Mode ) Mode = 1;
+        else if ( c == 's' && !Mode ) Mode = 2;
+        else goto usage;
+    }
+    if ( argc-globalUtilOptind != (Mode ? 0 : 1) ) goto usage;
+    return Abc_LmsCollectControl3(Mode ? NULL : argv[globalUtilOptind], Mode, Abc_FrameReadErr(pAbc));
+usage:
+    Abc_Print(-2, "usage: rec_collect3 [-r | -s] <samples.txt>\n");
+    Abc_Print(-2, "       Collect selected LMS functions and their input arrivals.\n");
+    Abc_Print(-2, "       -r : start/reset sampling of the loaded six-input library\n");
+    Abc_Print(-2, "       -s : stop sampling; without switches write accumulated samples\n");
+    return 1;
+}
+/**Function*************************************************************
+
+  Synopsis    [Experimental target-delay LMS replacement selection.]
+
+  Description []
+
+  SideEffects []
+
+  SeeAlso     []
+
+***********************************************************************/
+static int Abc_CommandLmsTarget( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    extern int Abc_NtkRecStartBuiltin3( FILE *, FILE * );
+    Gia_Man_t * pNew;
+    int c, Pass, Target = -1, Cuts = 8, CriticalCuts = 0, Rounds = 4, Exact = 16, Passes = 1, DpMode = 2, Memory = 1024, fVerbose = 0;
+    Extra_UtilGetoptReset();
+    while ( (c = Extra_UtilGetopt(argc, argv, "DCBIEPLMvh")) != EOF )
+    {
+        if ( c == 'v' ) fVerbose ^= 1;
+        else if ( c == 'D' || c == 'C' || c == 'B' || c == 'I' || c == 'E' || c == 'P' || c == 'L' || c == 'M' )
+        {
+            char * pEnd, * pStart;
+            long Value;
+            if ( globalUtilOptind >= argc ) goto usage;
+            pStart = argv[globalUtilOptind++];
+            Value = strtol(pStart, &pEnd, 10);
+            if ( pStart == pEnd || *pEnd || Value < (c == 'D' ? -1 : c == 'B' || c == 'E' || c == 'L' || c == 'M' ? 0 : 1) || Value > (c == 'D' ? 100000 : c == 'C' || c == 'B' ? 128 : c == 'E' ? 256 : c == 'L' ? 2 : c == 'M' ? 1048576 : 100) ) goto usage;
+            if ( c == 'D' ) Target = (int)Value;
+            if ( c == 'C' ) Cuts = (int)Value;
+            if ( c == 'B' ) CriticalCuts = (int)Value;
+            if ( c == 'I' ) Rounds = (int)Value;
+            if ( c == 'E' ) Exact = (int)Value;
+            if ( c == 'P' ) Passes = (int)Value;
+            if ( c == 'L' ) DpMode = (int)Value;
+            if ( c == 'M' ) Memory = (int)Value;
+        }
+        else goto usage;
+    }
+    if ( globalUtilOptind != argc ) goto usage;
+    if ( !pAbc->pGia ) { Abc_Print(-1, "There is no AIG.\n"); return 1; }
+    if ( !Abc_NtkRecIsRunning3() && !Abc_NtkRecStartBuiltin3(Abc_FrameReadOut(pAbc), Abc_FrameReadErr(pAbc)) ) return 1;
+    pNew = Lms_TargetPerformAdaptive(pAbc->pGia, Target, Cuts, Rounds, Exact, DpMode, Memory, CriticalCuts, fVerbose);
+    if ( !pNew ) return 1;
+    // Preserve given output requirements across passes. Without them,
+    // freeze the first pass's achieved arrival, including late CIs.
+    if ( Target < 0 && !pNew->vCoReqs )
+        Target = pNew->vCoArrs && Vec_IntSize(pNew->vCoArrs) ? Vec_IntFindMax(pNew->vCoArrs) : Gia_ManLevelNum(pNew);
+    // Recollect on the rewritten AIG, exposing new macro interiors and cut
+    // boundaries. Keep the deadline DP on each pass; do not freeze the input.
+    for ( Pass = 1; Pass < Passes; ++Pass )
+    {
+        Gia_Man_t * pTrial;
+        if ( fVerbose ) Abc_Print(1, "LMS target: recollection pass %d of %d.\n", Pass+1, Passes);
+        pTrial = Lms_TargetPerformAdaptive(pNew, Target, Cuts, Rounds, Exact, DpMode, Memory, CriticalCuts, fVerbose);
+        if ( !pTrial )
+        {
+            Abc_Print(0, "LMS target: recollection failed; keeping the preceding feasible result.\n");
+            break;
+        }
+        if ( Gia_ManAndNum(pTrial) >= Gia_ManAndNum(pNew) )
+        {
+            Gia_ManStop(pTrial);
+            if ( fVerbose ) Abc_Print(1, "LMS target: no area improvement; stopping recollection.\n");
+            break;
+        }
+        Gia_ManStop(pNew);
+        pNew = pTrial;
+    }
+    Abc_FrameUpdateGia(pAbc, pNew);
+    return 0;
+usage:
+    Abc_Print(-2, "usage: &lms [-D num] [-CBIEPLM num] [-vh]\n");
+    Abc_Print(-2, "           experimental LMS-inspired delay-optimization\n");
+    Abc_Print(-2, "\t-D num : maximum output arrival (unit AND delay); -1 = automatic\n");
+    Abc_Print(-2, "\t         default: given CO requirements, or best arrival in the cut bank\n");
+    Abc_Print(-2, "\t         honors GIA integer CI arrivals/CO requirements; explicit -D caps every CO\n");
+    Abc_Print(-2, "\t-C num : retained cuts per node [default = %d]\n", Cuts);
+    Abc_Print(-2, "\t-B num : recollect zero-slack macros with this cut budget; 0 = disabled [default = %d]\n", CriticalCuts);
+    Abc_Print(-2, "\t         must exceed -C to add a pilot-guided collection (maximum 128)\n");
+    Abc_Print(-2, "\t-I num : sharing-estimate rounds [default = %d]\n", Rounds);
+    Abc_Print(-2, "\t-E num : ranked exact-area trials per root; 0 = exhaustive [default = %d]\n", Exact);
+    Abc_Print(-2, "\t-P num : maximum collect/select passes; stop without area gain [default = %d]\n", Passes);
+    Abc_Print(-2, "\t-L num : deadline DP: 0 = dense, 1 = lazy, 2 = adaptive [default = %d]\n", DpMode);
+    Abc_Print(-2, "\t-M num : deadline-table budget in MiB; 0 = unlimited [default = %d]\n", Memory);
+    Abc_Print(-2, "\t         limits extra deadline slack when needed; preserves feasibility but may restrict area search\n");
+    Abc_Print(-2, "\t-v     : print timing, memory, and optimization statistics\n");
+    Abc_Print(-2, "\t-h     : print usage\n");
+    return 1;
+}
+
+static int Abc_CommandRecGen3( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    int c, fXor = 0;
+    Extra_UtilGetoptReset();
+    while ( (c = Extra_UtilGetopt(argc, argv, "xh")) != EOF )
+        if ( c == 'x' ) fXor ^= 1;
+        else goto usage;
+    if ( argc-globalUtilOptind != 2 ) goto usage;
+    return !(fXor ? Lms_LibGenerateXor(argv[globalUtilOptind], argv[globalUtilOptind+1], Abc_FrameReadErr(pAbc)) :
+                   Lms_LibGenerate(argv[globalUtilOptind], argv[globalUtilOptind+1], Abc_FrameReadErr(pAbc)));
+usage:
+    Abc_Print(-2, "usage: rec_gen3 [-x] <samples.txt> <library.aig>\n");
+    Abc_Print(-2, "       Generate a six-input LMS library from truth/arrival samples.\n");
+    Abc_Print(-2, "       Canonicalize, deduplicate, and retain area/pin-depth alternatives.\n");
+    Abc_Print(-2, "       The output must be a new file. No recorded library is required.\n");
+    Abc_Print(-2, "       -x : generate unit AND/XOR profiles, written as three-AND XOR patterns\n");
+    return 1;
+}
+static int Abc_CommandRecEmbed3( Abc_Frame_t * pAbc, int argc, char ** argv )
+{
+    int c, fDecode = 0;
+    Extra_UtilGetoptReset();
+    while ( (c = Extra_UtilGetopt(argc, argv, "dh")) != EOF )
+        if ( c == 'd' ) fDecode ^= 1;
+        else goto usage;
+    if ( argc-globalUtilOptind != (fDecode ? 1 : 2) ) goto usage;
+    return !(fDecode ? Lms_BuiltinWrite(argv[globalUtilOptind], Abc_FrameReadErr(pAbc)) :
+        Lms_EmbedWrite(argv[globalUtilOptind], argv[globalUtilOptind+1], Abc_FrameReadErr(pAbc)));
+usage:
+    Abc_Print(-2, "usage: rec_embed3 [-h] <library.aig> <data.inc>\n");
+    Abc_Print(-2, "       Encode a six-input LMS library as a compact C initializer.\n");
+    Abc_Print(-2, "       rec_embed3 -d <library.aig> decodes the compiled-in initializer.\n");
+    Abc_Print(-2, "       Output must be a new file. The active LMS manager is unchanged.\n");
+    return 1;
+}
 int Abc_CommandRecPs3( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
     int c, fPrintLib = 0;
@@ -21071,7 +21266,7 @@ int Abc_CommandRecPs3( Abc_Frame_t * pAbc, int argc, char ** argv )
     }
     if ( !Abc_NtkRecIsRunning3() )
     {
-        Abc_Print( -1, "This command works for AIGs only after calling \"rec_start3\".\n" );
+        Abc_Print( -1, "No LMS library is active (use \"rec_start3\" or \"&if -y\").\n" );
         return 0;
     }
     Abc_NtkRecPs3(fPrintLib);
@@ -42597,6 +42792,7 @@ usage:
 ***********************************************************************/
 int Abc_CommandAbc9Fraig( Abc_Frame_t * pAbc, int argc, char ** argv )
 {
+    extern Bnd_Man_t * pBnd;
     extern void Cec4_ManSetParams( Cec_ParFra_t * pPars );
     extern Gia_Man_t * Cec2_ManSimulateTest( Gia_Man_t * p, Cec_ParFra_t * pPars );
     extern Gia_Man_t * Cec3_ManSimulateTest( Gia_Man_t * p, Cec_ParFra_t * pPars );
@@ -42786,6 +42982,11 @@ int Abc_CommandAbc9Fraig( Abc_Frame_t * pAbc, int argc, char ** argv )
         Abc_Print( -1, "Abc_CommandAbc9Fraig(): There is no AIG.\n" );
         return 1;
     }
+    if ( pPars->fBMiterInfo && pBnd == NULL )
+    {
+        Abc_Print( -1, "&fraig -q requires an initialized boundary miter.\n" );
+        return 1;
+    }
     if ( fUseSave )
     {
         Cec4_ManSimulateTest5( pAbc->pGia, pPars->nBTLimit, pPars->fVerbose );
@@ -42813,7 +43014,7 @@ int Abc_CommandAbc9Fraig( Abc_Frame_t * pAbc, int argc, char ** argv )
     return 0;
 
 usage:
-    Abc_Print( -2, "usage: &fraig [-JWRILDCNPM <num>] [-F filename] [-rmdckngxysopwvh]\n" );
+    Abc_Print( -2, "usage: &fraig [-JWRILDCNPM <num>] [-F filename] [-rmdckngxysopwqvh]\n" );
     Abc_Print( -2, "\t         performs combinational SAT sweeping\n" );
     Abc_Print( -2, "\t-J num : the solver type [default = %d]\n", pPars->jType );
     Abc_Print( -2, "\t-W num : the number of simulation words [default = %d]\n", pPars->nWords );
@@ -42839,7 +43040,7 @@ usage:
     Abc_Print( -2, "\t-o     : toggle using the old SAT sweeper [default = %s]\n", fUseIvy? "yes": "no" );
     Abc_Print( -2, "\t-p     : toggle trying to prove when running the old SAT sweeper [default = %s]\n", fUseProve? "yes": "no" );
     Abc_Print( -2, "\t-w     : toggle printing even more verbose information [default = %s]\n", pPars->fVeryVerbose? "yes": "no" );
-    Abc_Print( -2, "\t-q     : toggle printing additional information for boundary miters [default = %s]\n", pPars->fVeryVerbose? "yes": "no" );
+    Abc_Print( -2, "\t-q     : toggle recording mappings for an initialized boundary miter [default = %s]\n", pPars->fBMiterInfo? "yes": "no" );
     Abc_Print( -2, "\t-v     : toggle printing verbose information [default = %s]\n", pPars->fVerbose? "yes": "no" );
     Abc_Print( -2, "\t-h     : print the command usage\n");
     return 1;
@@ -44296,13 +44497,15 @@ int Abc_CommandAbc9Verify( Abc_Frame_t * pAbc, int argc, char ** argv )
             goto usage;
         }
     }
+    if ( argc > globalUtilOptind + 1 )
+        goto usage;
     if ( argc == globalUtilOptind + 1 )
     {
         pFileSpec = argv[globalUtilOptind];
         Extra_FileNameCorrectPath( pFileSpec );
         printf( "Taking spec from file \"%s\".\n", pFileSpec );
     }
-    Gia_ManVerifyWithBoxes( pAbc->pGia, nBTLimit, nTimeLim, fSeq, fObjIdMap, fDumpFiles, fVerbose, pFileSpec );
+    Abc_FrameSetStatus( Gia_ManVerifyWithBoxes(pAbc->pGia, nBTLimit, nTimeLim, fSeq, fObjIdMap, fDumpFiles, fVerbose, pFileSpec) );
     return 0;
 
 usage:
@@ -45379,6 +45582,14 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
         }
     }
 
+    // LMS defaults to six-input cuts unless the user supplied -K.
+    if ( pPars->fUserRecLib && pPars->nLutSize == -1 )
+    {
+        pPars->nLutSize = 6;
+        pPars->pLutLib = NULL;
+        pPars->pCellLib = NULL;
+    }
+
     // Auto-detect K from cell library when -j is used
     if ( pPars->fEnableCheck07 && pPars->nLutSize == -1 )
     {
@@ -45415,6 +45626,7 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
         return 1;
     }
 
+    // Use the LUT library for an unspecified cut size.
     if ( pPars->nLutSize == -1 )
     {
         if ( pPars->pLutLib == NULL )
@@ -45438,6 +45650,12 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
     if ( pPars->nCutsMax < 1 || pPars->nCutsMax >= (1<<12) )
     {
         Abc_Print( -1, "Incorrect number of cuts.\n" );
+        return 1;
+    }
+
+    if ( !Gia_ManHasChoices(pAbc->pGia) && pAbc->pGia->pNexts && Gia_ManHasDangling(pAbc->pGia) )
+    {
+        Abc_Print( -1, "Choice nodes are not in the format required by &if. Use \"&get -s\" to import choices for mapping.\n" );
         return 1;
     }
 
@@ -45665,8 +45883,13 @@ int Abc_CommandAbc9If( Abc_Frame_t * pAbc, int argc, char ** argv )
     {
         if ( !Abc_NtkRecIsRunning3() )
         {
-            printf( "LMS manager is not running (use \"rec_start3\").\n" );
-            return 0;
+            extern int Abc_NtkRecStartBuiltin3( FILE * pOut, FILE * pError );
+            if ( pPars->nLutSize != 6 )
+            {
+                Abc_Print(-1, "Built-in LMS library has 6 inputs, but the selected cut size is %d. Use -K 6 or load a matching external LMS library.\n", pPars->nLutSize);
+                return 0;
+            }
+            if ( !Abc_NtkRecStartBuiltin3(Abc_FrameReadOut(pAbc), Abc_FrameReadErr(pAbc)) ) return 1;
         }
         if ( Abc_NtkRecInputNum3() != pPars->nLutSize )
         {
@@ -45719,7 +45942,7 @@ usage:
     else
         sprintf(Buffer, "%.2f", pPars->DelayTarget );
     if ( pPars->nLutSize == -1 )
-        sprintf(LutSize, "library" );
+        sprintf(LutSize, "%s", pPars->fUserRecLib ? "6" : "library" );
     else
         sprintf(LutSize, "%d", pPars->nLutSize );
     Abc_Print( -2, "usage: &if [-KCFAGRTXYZM num] [-DEW float] [-SJ str] [-qarlepmsdbgxyofuijkztnchvw]\n" );
@@ -45754,6 +45977,8 @@ usage:
     Abc_Print( -2, "\t-g       : toggles delay optimization by SOP balancing [default = %s]\n", pPars->fDelayOpt? "yes": "no" );
     Abc_Print( -2, "\t-x       : toggles delay optimization by DSD balancing [default = %s]\n", pPars->fDsdBalance? "yes": "no" );
     Abc_Print( -2, "\t-y       : toggles delay optimization with recorded library [default = %s]\n", pPars->fUserRecLib? "yes": "no" );
+    Abc_Print( -2, "\t           -y uses the built-in six-input library if none is loaded; exact cache is on\n" );
+    Abc_Print( -2, "\t           -y defaults to -K 6; an explicit -K overrides this default\n" );
     Abc_Print( -2, "\t-o       : toggles using buffers to decouple combinational outputs [default = %s]\n", pPars->fUseBuffs? "yes": "no" );
     Abc_Print( -2, "\t-f       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck75? "yes": "no" );
     Abc_Print( -2, "\t-u       : toggles enabling additional check [default = %s]\n", pPars->fEnableCheck75u? "yes": "no" );
@@ -56006,7 +56231,8 @@ int Abc_CommandAbc9Mfs( Abc_Frame_t * pAbc, int argc, char ** argv )
         pAbc->pGia->nRegs = 0;
         pTemp = Gia_ManPerformMfs( pAbc->pGia, pPars );
         Gia_ManSetRegNum( pAbc->pGia, nRegs );
-        Gia_ManSetRegNum( pTemp, nRegs );
+        if ( pTemp )
+            Gia_ManSetRegNum( pTemp, nRegs );
     }
     Abc_FrameUpdateGia( pAbc, pTemp );
     return 0;

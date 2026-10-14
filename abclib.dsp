@@ -6517,6 +6517,42 @@ SOURCE=.\src\bool\dec\decUtil.c
 SOURCE=.\src\bool\deco\deco.h
 # End Source File
 # End Group
+# Begin Group "decpla"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decpla.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaCom.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaCore.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaDec.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaInt.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaRead.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaSupp.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\decpla\decplaVerify.c
+# End Source File
+# End Group
 # Begin Group "kit"
 
 # PROP Default_Filter ""
@@ -6588,6 +6624,54 @@ SOURCE=.\src\bool\kit\kitTruth.c
 # Begin Group "lucky"
 
 # PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lms.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsBuiltin.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsBuiltinData.inc
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsCollect.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsCuts.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsEval.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsGen.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsInt.h
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsKernel.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsLib.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsTarget.c
+# End Source File
+# Begin Source File
+
+SOURCE=.\src\bool\lms\lmsXor.h
+# End Source File
 # Begin Source File
 
 SOURCE=.\src\bool\lucky\lucky.c
